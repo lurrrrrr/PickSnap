@@ -1,0 +1,33 @@
+PickSnap · 拾帧
+
+本项目是 PicRope（图绳）的修改版，非官方发布。
+
+来源链条：
+
+  1. Tendedero —— 原始项目（macOS），Copyright (c) 2026 Alejandro Buján，MIT 许可
+     https://github.com/alejandrobujan/tendedero
+     上游参考版本：db65d2ea84ba5120b4ed90acce2b457d4ad18c4b
+
+  2. PicRope —— Tendedero 的 Windows 移植（C# / WPF），作者 Renly1994
+     https://github.com/Renly1994/PicRope
+     本项目基于其 1.2.1 版本修改，起点提交：1d12575
+
+  3. PickSnap —— 本项目在上游基础上修改而来
+
+原始代码版权归 Alejandro Buján 所有；PicRope 的 Windows 实现与中文文案由 Renly1994 完成；
+本仓库的修改部分同样以 MIT 许可发布。完整 MIT 许可及「名称与图标」条款见 LICENSE。
+
+按上游 LICENSE 的条款要求，本项目使用独立名称与独立设计的图标：
+英文名称为 PickSnap，中文名称为「拾帧」，图标为原创的横杆与两张卡片造型。
+本项目不代表 PicRope 或 Tendedero，也未获得任一上游作者的背书。
+
+内置图片编辑器：Filerobot Image Editor 4.9.1
+https://github.com/scaleflex/filerobot-image-editor
+Copyright (c) 2022 scaleflex，MIT 许可。
+浏览器发行文件另标注 Copyright (c) 2019 Scaleflex。
+完整许可及组件依赖声明见 third-party-notices/Filerobot。
+
+桌面网页容器：Microsoft WebView2 SDK 1.0.4258.31
+https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.4258.31
+Copyright (C) Microsoft Corporation. All rights reserved.
+完整许可及第三方声明见 third-party-notices/WebView2。

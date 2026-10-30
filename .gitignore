@@ -1,0 +1,40 @@
+# 构建与发布产物
+/build/
+/releases/
+/test-data/
+/previews/
+/宣传片/
+
+# 本机数据与缓存
+.workbuddy/
+data/
+Captures/
+EditorCache/
+runtime-assets/
+
+# 密钥与证书
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.key
+*.pem
+*.snk
+
+# 日志与临时文件
+*.log
+*.tmp
+Thumbs.db
+.DS_Store
+
+# 编辑器与 IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Python 脚本缓存
+__pycache__/
+.pytest_cache/

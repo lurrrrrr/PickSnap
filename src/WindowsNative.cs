@@ -1,0 +1,246 @@
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Windows.Interop;
+using Forms = System.Windows.Forms;
+
+namespace ScreenLine
+{
+    internal static class WindowsNative
+    {
+        public const int ShowMessage = 0x8001;
+        public const int ExitMessage = 0x8002;
+        public const string MessageWindow = "ScreenLine.Windows.Messages";
+        public static readonly IntPtr MessageParent = new IntPtr(-3);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Point { public int X, Y; }
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Rectangle { public int Left, Top, Right, Bottom; }
+
+        [DllImport("user32.dll")] public static extern bool GetCursorPos(out Point point);
+        [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int key);
+        [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out Rectangle rectangle);
+        [DllImport("user32.dll")] public static extern IntPtr GetShellWindow();
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr window, StringBuilder name, int length);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr window, StringBuilder text, int length);
+        [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
+        delegate bool WindowEnumerator(IntPtr window, IntPtr parameter);
+        [DllImport("user32.dll")] static extern bool EnumWindows(WindowEnumerator callback, IntPtr parameter);
+        [DllImport("user32.dll")] static extern bool IsIconic(IntPtr window);
+        [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out int value, int size);
+        [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr window, int index);
+        [DllImport("user32.dll")] static extern int SetWindowLong(IntPtr window, int index, int value);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool SetProp(IntPtr window, string name, IntPtr value);
+        [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
+        [DllImport("user32.dll")] static extern IntPtr MonitorFromPoint(Point point, uint flags);
+        [DllImport("shcore.dll")] static extern int GetDpiForMonitor(IntPtr monitor, int type, out uint x, out uint y);
+        [DllImport("shell32.dll")] static extern int SHGetKnownFolderPath([MarshalAs(UnmanagedType.LPStruct)] Guid folder, uint flags, IntPtr token, out IntPtr path);
+        [DllImport("user32.dll")] public static extern bool AddClipboardFormatListener(IntPtr window);
+        [DllImport("user32.dll")] public static extern bool RemoveClipboardFormatListener(IntPtr window);
+        [DllImport("user32.dll")] public static extern uint GetClipboardSequenceNumber();
+        [DllImport("user32.dll")] static extern IntPtr GetClipboardOwner();
+        [DllImport("user32.dll", EntryPoint = "GetWindowThreadProcessId")] static extern uint ClipboardOwnerProcess(IntPtr window, out uint process);
+        [DllImport("user32.dll")] public static extern bool RegisterHotKey(IntPtr window, int id, uint modifiers, uint key);
+        [DllImport("user32.dll")] public static extern bool UnregisterHotKey(IntPtr window, int id);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowEx(IntPtr parent, IntPtr child, string className, string title);
+        [DllImport("user32.dll")] static extern bool PostMessage(IntPtr window, int message, IntPtr w, IntPtr l);
+        [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
+        [DllImport("user32.dll")] static extern uint GetCurrentThreadId();
+        [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, IntPtr process);
+        [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+        [DllImport("user32.dll")] static extern bool AttachThreadInput(uint thread, uint target, bool attach);
+        [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point point);
+
+        // 低级鼠标钩子：透明分层窗口的空白像素（alpha=0）在系统命中测试里直接穿透，
+        // WPF 收不到落在这些区域的滚轮，需要钩子先行接管（见 ShelfWindow.WatchMouse）。
+        public delegate IntPtr MouseHookProc(int code, IntPtr word, IntPtr info);
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MouseHookStruct { public Point Point; public uint MouseData; public uint Flags; public uint Time; public IntPtr ExtraInfo; }
+        public const int MouseWheelMessage = 0x020A;
+        [DllImport("user32.dll", SetLastError = true)] static extern IntPtr SetWindowsHookEx(int hook, MouseHookProc procedure, IntPtr module, uint thread);
+        [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(IntPtr hook);
+        [DllImport("user32.dll")] static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr word, IntPtr info);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr GetModuleHandle(string name);
+
+        public static IntPtr InstallMouseHook(MouseHookProc procedure) { return SetWindowsHookEx(14, procedure, GetModuleHandle(null), 0); }
+        public static void RemoveMouseHook(IntPtr hook) { if (hook != IntPtr.Zero) UnhookWindowsHookEx(hook); }
+        public static IntPtr NextMouseHook(IntPtr hook, int code, IntPtr word, IntPtr info) { return CallNextHookEx(hook, code, word, info); }
+        public static IntPtr WindowAt(Point point) { return WindowFromPoint(point); }
+        public static uint WindowProcess(IntPtr window) { uint process; GetWindowThreadProcessId(window, out process); return process; }
+
+        public static void ActivateEditor(IntPtr window)
+        {
+            uint current = GetCurrentThreadId(), foreground = GetWindowThreadProcessId(GetForegroundWindow(), IntPtr.Zero);
+            bool attached = foreground != 0 && foreground != current && AttachThreadInput(current, foreground, true);
+            try { SetForegroundWindow(window); }
+            finally { if (attached) AttachThreadInput(current, foreground, false); }
+        }
+
+        public static Point Cursor() { Point point; GetCursorPos(out point); return point; }
+
+        public static string ClipboardOwnerName()
+        {
+            uint process; ClipboardOwnerProcess(GetClipboardOwner(), out process);
+            if (process == 0) return null;
+            try { using (var owner = System.Diagnostics.Process.GetProcessById((int)process)) return owner.ProcessName; }
+            catch (ArgumentException) { return null; }
+            catch (InvalidOperationException) { return null; }
+            catch (System.ComponentModel.Win32Exception) { return null; }
+        }
+
+        public static string WindowTitle(IntPtr window)
+        {
+            var text = new StringBuilder(1024);
+            GetWindowText(window, text, text.Capacity);
+            return text.ToString();
+        }
+
+        public static Forms.Screen[] Screens { get { return Forms.Screen.AllScreens; } }
+
+        public static Forms.Screen ScreenAtPointer()
+        {
+            var point = Cursor();
+            return Forms.Screen.FromPoint(new System.Drawing.Point(point.X, point.Y));
+        }
+
+        public static double MonitorScale(Forms.Screen screen)
+        {
+            var point = new Point { X = screen.Bounds.Left + screen.Bounds.Width / 2, Y = screen.Bounds.Top + screen.Bounds.Height / 2 };
+            uint x, y;
+            return GetDpiForMonitor(MonitorFromPoint(point, 2), 0, out x, out y) == 0 ? x / 96.0 : 1;
+        }
+
+        public static void PrepareOverlay(IntPtr window)
+        {
+            // 透明动效覆盖屏幕时仍是叠加层，避免任务栏将其当作全屏应用。
+            SetProp(window, "NonRudeHWND", new IntPtr(1));
+            SetWindowLong(window, -20, GetWindowLong(window, -20) | 0x08000000 | 0x80);
+        }
+
+        public static void PassMouse(IntPtr window, bool pass)
+        {
+            int before = GetWindowLong(window, -20);
+            int after = pass ? before | 0x20 : before & ~0x20;
+            if (after != before) SetWindowLong(window, -20, after);
+        }
+
+        public static bool OverCaptionButtons(Forms.Screen screen, Point cursor, IntPtr overlay)
+        {
+            double scale = MonitorScale(screen);
+            var bounds = screen.Bounds;
+            var work = screen.WorkingArea;
+            if (cursor.X < Math.Min(bounds.Right, work.Right) - 150 * scale || cursor.X >= bounds.Right
+                || cursor.Y < bounds.Top || cursor.Y >= Math.Max(bounds.Top, work.Top) + 40 * scale) return false;
+            Rectangle rect = new Rectangle();
+            bool found = false;
+            EnumWindows(delegate(IntPtr window, IntPtr parameter)
+            {
+                if (window == overlay || window == GetShellWindow() || !IsWindowVisible(window) || IsIconic(window)
+                    || (GetWindowLong(window, -20) & 0x20) != 0) return true;
+                int cloaked;
+                if (DwmGetWindowAttribute(window, 14, out cloaked, sizeof(int)) == 0 && cloaked != 0) return true;
+                Rectangle candidate;
+                if (!GetWindowRect(window, out candidate) || cursor.X < candidate.Left || cursor.X >= candidate.Right
+                    || cursor.Y < candidate.Top || cursor.Y >= candidate.Bottom) return true;
+                var name = new StringBuilder(128);
+                GetClassName(window, name, name.Capacity);
+                string type = name.ToString();
+                if (type == "WorkerW" || type == "Progman" || type.StartsWith("Shell_")) return true;
+                rect = candidate; found = true;
+                return false;
+            }, IntPtr.Zero);
+            if (!found) return false;
+            if (rect.Left > work.Left || rect.Top > work.Top || rect.Right < work.Right || rect.Bottom < work.Bottom) return false;
+            if (rect.Right > bounds.Right + 16 * scale || rect.Right <= bounds.Left || rect.Top >= bounds.Bottom
+                || rect.Right - rect.Left < 280 * scale || rect.Bottom - rect.Top < 80 * scale) return false;
+            double right = Math.Min(rect.Right, bounds.Right), top = Math.Max(rect.Top, bounds.Top);
+            return cursor.X >= right - 150 * scale && cursor.X < right && cursor.Y >= top && cursor.Y < top + 40 * scale;
+        }
+
+        public static bool FullScreen(Forms.Screen screen, IntPtr overlay)
+        {
+            IntPtr foreground = GetForegroundWindow();
+            if (foreground == IntPtr.Zero || foreground == overlay || foreground == GetShellWindow()) return false;
+            var name = new StringBuilder(128);
+            GetClassName(foreground, name, name.Capacity);
+            string type = name.ToString();
+            if (type == "WorkerW" || type == "Progman" || type.StartsWith("Shell_")) return false;
+            Rectangle rectangle;
+            if (!GetWindowRect(foreground, out rectangle)) return false;
+            var bounds = screen.Bounds;
+            return rectangle.Left <= bounds.Left && rectangle.Top <= bounds.Top && rectangle.Right >= bounds.Right && rectangle.Bottom >= bounds.Bottom;
+        }
+
+        public static string ScreenshotFolder()
+        {
+            IntPtr path;
+            if (SHGetKnownFolderPath(new Guid("b7bede81-df94-4682-a7d8-57a52620b86f"), 0, IntPtr.Zero, out path) == 0)
+            {
+                try { return Marshal.PtrToStringUni(path); }
+                finally { Marshal.FreeCoTaskMem(path); }
+            }
+            return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Screenshots");
+        }
+
+        public static void ShowExisting()
+        {
+            PostMessage(FindWindowEx(MessageParent, IntPtr.Zero, null, MessageWindow), ShowMessage, IntPtr.Zero, IntPtr.Zero);
+        }
+
+        public static void RequestExit()
+        {
+            PostMessage(FindWindowEx(MessageParent, IntPtr.Zero, null, MessageWindow), ExitMessage, IntPtr.Zero, IntPtr.Zero);
+        }
+    }
+
+    internal sealed class WindowsEvents : IDisposable
+    {
+        readonly HwndSource source;
+        public readonly bool ShortcutAvailable;
+        public bool CaptureShortcutAvailable { get; private set; }
+        uint captureModifiers, captureKey;
+        int captureId = 2;
+        public event Action ClipboardChanged;
+        public event Action ToggleRequested;
+        public event Action ExitRequested;
+        public event Action CaptureRequested;
+
+        public bool RegisterCapture(uint modifiers, uint key)
+        {
+            if (modifiers == 0 || (modifiers & ~15u) != 0 || key < 0x20 || key > 0xFE) return false;
+            if (CaptureShortcutAvailable && modifiers == captureModifiers && key == captureKey) return true;
+            int next = captureId == 2 ? 3 : 2;
+            if (!WindowsNative.RegisterHotKey(source.Handle, next, modifiers | 0x4000, key)) return false;
+            if (CaptureShortcutAvailable) WindowsNative.UnregisterHotKey(source.Handle, captureId);
+            captureId = next; captureModifiers = modifiers; captureKey = key; CaptureShortcutAvailable = true;
+            return true;
+        }
+
+        public WindowsEvents()
+        {
+            source = new HwndSource(new HwndSourceParameters(WindowsNative.MessageWindow) { ParentWindow = WindowsNative.MessageParent });
+            source.AddHook(Receive);
+            if (!WindowsNative.AddClipboardFormatListener(source.Handle)) throw new System.ComponentModel.Win32Exception();
+            ShortcutAvailable = WindowsNative.RegisterHotKey(source.Handle, 1, 0x4003, (uint)'T');
+        }
+
+        IntPtr Receive(IntPtr window, int message, IntPtr w, IntPtr l, ref bool handled)
+        {
+            if (message == 0x031D && ClipboardChanged != null) ClipboardChanged();
+            if ((message == WindowsNative.ShowMessage || message == 0x0312 && w.ToInt32() == 1) && ToggleRequested != null) ToggleRequested();
+            if (message == 0x0312 && w.ToInt32() == captureId && CaptureRequested != null) CaptureRequested();
+            if (message == WindowsNative.ExitMessage && ExitRequested != null) ExitRequested();
+            return IntPtr.Zero;
+        }
+
+        public void Dispose()
+        {
+            WindowsNative.RemoveClipboardFormatListener(source.Handle);
+            if (ShortcutAvailable) WindowsNative.UnregisterHotKey(source.Handle, 1);
+            if (CaptureShortcutAvailable) WindowsNative.UnregisterHotKey(source.Handle, captureId);
+            source.Dispose();
+        }
+    }
+}
