@@ -1,27 +1,30 @@
 <p align="center">
-  <img src="src/assets/PickSnap.png" width="72" height="72" alt="PickSnap アイコン">
+  <img src="../../src/assets/PickSnap.png" width="72" height="72" alt="PickSnap アイコン">
 </p>
 
 <h1 align="center">拾帧 · PickSnap</h1>
 
-<p align="center">スクリーンショットとコピーした文字を、画面の上端に張った一本のロープに吊るしておきます。<br>使うときに引き下ろして、取る・位置を変える・そのままデスクトップに置く、好きなように。</p>
+<p align="center"><strong>物干しざお式クリップボード収納</strong>。スクリーンショットとコピーした文字を画面の上端に吊るして、すぐに取り出し、見比べ、編集できます。</p>
+
+![画面の上端に吊るされたスクリーンショット。右側に画像バスケットとテキスト封筒](../../docs/assets/shelf-light.png)
 
 <p align="center">
-  <a href="https://github.com/lurrrrrr/PickSnap/releases/latest"><strong>最新版をダウンロード</strong></a>
-  ·
-  <a href="README.md">简体中文</a> ·
+  <a href="https://github.com/lurrrrrr/PickSnap/releases/latest"><strong>最新版をダウンロード ›</strong></a>
+</p>
+
+
+<p align="center">
+  <a href="../../README.md">简体中文</a> ·
   <a href="README.en.md">English</a> ·
-  <a href="README.zh-TW.md">繁體中文</a> ·
-  <a href="README.ja.md">日本語</a>
+  <a href="README.zh-Hant.md">繁體中文</a> ·
+  日本語
 </p>
 
 <p align="center">
   <a href="https://github.com/lurrrrrr/PickSnap/releases/latest"><img src="https://img.shields.io/github/v/release/lurrrrrr/PickSnap?style=flat-square&label=release&color=2563eb" alt="最新リリース"></a>
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-0078d4?style=flat-square" alt="Windows 10 / 11">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-475569?style=flat-square" alt="MIT ライセンス"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-475569?style=flat-square" alt="MIT ライセンス"></a>
 </p>
-
-![画面の上端に吊るされたスクリーンショット。右側に画像バスケットとテキスト封筒](docs/assets/shelf-light.png)
 
 ---
 
@@ -29,7 +32,7 @@
 
 ロープ上のスクリーンショットには、それぞれ頭の上にアルミの洗濯ばさみが付いています。飾りではありません。コピー、デスクトップにピン留め、位置を変える——すべてこのクリップが取っ手になります。
 
-![画像の上のクリップを押さえて左右にドラッグすると、ロープ上の位置を自由に動かせます](docs/assets/clip-drag.gif)
+![画像の上のクリップを押さえて左右にドラッグすると、ロープ上の位置を自由に動かせます](../../docs/assets/clip-drag.gif)
 
 | 操作 | 結果 |
 | --- | --- |
@@ -42,7 +45,7 @@
 
 枚数が増えても大丈夫。ホイールでロープを横にスクロールでき、端までドラッグすると連続スクロールします。止まると自動で位置が揃うため、画像が画面の端で半分だけ見える状態になりません。
 
-![ロープ全体を横にスクロール](docs/assets/rope-scroll.gif)
+![ロープ全体を横にスクロール](../../docs/assets/rope-scroll.gif)
 
 ---
 
@@ -70,7 +73,7 @@
 
 今は使わない画像はここに。クリック選択とドラッグ矩形選択に対応し、選んだ画像をまとめてロープに掛け直せます。ロープ上の画像は、右端のバスケットアイコンへドラッグするか、バスケットウィンドウが開いていればその中へドラッグするだけで外せます。
 
-![画像を右側のバスケットへドラッグしてロープから外す](docs/assets/drop-basket.gif)
+![画像を右側のバスケットへドラッグしてロープから外す](../../docs/assets/drop-basket.gif)
 
 バスケット上部の「7 日より古い画像を自動整理」は既定でオフ。オンにすると 7 日を超えたスクリーンショットがごみ箱に移ります（詳細は下記のよくある質問）。
 
@@ -78,7 +81,7 @@
 
 コピーした文字を自動で収集し、全文検索とワンクリックコピーに対応。改行やインデントも保たれます。削除後 5 秒間は「元に戻す」で元の位置に戻せます。保持するのは最新 100 件のみです。
 
-<p align="center"><img src="docs/assets/text-window.png" width="330" alt="テキスト封筒：検索欄、収集した文字、コピーと削除、削除後の元に戻す"></p>
+<p align="center"><img src="../../docs/assets/text-window.png" width="330" alt="テキスト封筒：検索欄、収集した文字、コピーと削除、削除後の元に戻す"></p>
 
 **範囲キャプチャ**
 
@@ -91,7 +94,7 @@
 <details>
 <summary>ダークモード</summary>
 
-![ダークモードのロープ](docs/assets/shelf-dark.png)
+![ダークモードのロープ](../../docs/assets/shelf-dark.png)
 
 </details>
 
@@ -119,7 +122,7 @@ cd PickSnap
 ./scripts/build.ps1
 ```
 
-生成物は `build\` に置かれます。`build\PickSnap.exe` を実行してください。配布用 zip は `./scripts/build.ps1 -Package` で作れます。
+ソースは `src\`、サードパーティ製コンポーネントは `vendor\`、ビルドとパッケージのスクリプトは `scripts\` にあります。生成物は `build\` に置かれます。`build\PickSnap.exe` を実行してください。配布用 zip は `./scripts/build.ps1 -Package` で作れます。
 
 ---
 
@@ -221,19 +224,6 @@ PNG、JPG、BMP、GIF、TIF です。GIF と TIF は編集に最初の 1 フレ�
 
 ---
 
-## 開発
-
-C# + WPF（.NET Framework 4.8）。MSBuild には依存せず `csc` で直接コンパイルします。
-
-```powershell
-./scripts/build.ps1          # ビルド
-./scripts/build.ps1 -Package # ビルドして配布用 zip を作成
-```
-
-ソースは `src\`、サードパーティ製コンポーネントは `vendor\`、ビルドとパッケージのスクリプトは `scripts\` にあります。
-
----
-
 ## クレジットとライセンス
 
 本プロジェクトは以下のオープンソースプロジェクトを改変したものです。原作者に感謝します。
@@ -241,4 +231,4 @@ C# + WPF（.NET Framework 4.8）。MSBuild には依存せず `csc` で直接コ
 - [Tendedero](https://github.com/alejandrobujan/tendedero)：macOS 版のオリジナル、作者 [Alejandro Buján](https://github.com/alejandrobujan)
 - [PicRope](https://github.com/Renly1994/PicRope)：Windows への移植版、作者 [Renly1994](https://github.com/Renly1994)
 
-オリジナルの著作権は Alejandro Buján に帰属し、MIT ライセンスで公開されています。本リポジトリの改変部分も同様に MIT です。上流ライセンスの「名称とアイコン」条項に従い、本プロジェクトは独自名称「拾帧 / PickSnap」と独自アイコンを使用しています。由来の詳細とサードパーティの宣言は [NOTICE](NOTICE)、ライセンス条項は [LICENSE](LICENSE) を参照してください。
+オリジナルの著作権は Alejandro Buján に帰属し、MIT ライセンスで公開されています。本リポジトリの改変部分も同様に MIT です。上流ライセンスの「名称とアイコン」条項に従い、本プロジェクトは独自名称「拾帧 / PickSnap」と独自アイコンを使用しています。由来の詳細とサードパーティの宣言は [NOTICE](../../NOTICE)、ライセンス条項は [LICENSE](../../LICENSE) を参照してください。

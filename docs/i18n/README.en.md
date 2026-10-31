@@ -1,27 +1,30 @@
 <p align="center">
-  <img src="src/assets/PickSnap.png" width="72" height="72" alt="PickSnap icon">
+  <img src="../../src/assets/PickSnap.png" width="72" height="72" alt="PickSnap icon">
 </p>
 
 <h1 align="center">PickSnap</h1>
 
-<p align="center">Hang your screenshots and copied text on a clothesline along the top edge of the screen.<br>Slide it down when you need something: take it, move it, or pin it on the desktop.</p>
+<p align="center"><strong>A clothesline for your clipboard</strong> — hang screenshots and copied text along the top edge of your screen; grab, compare and edit them at a glance.</p>
+
+![Screenshots hanging along the top edge of the screen, with the image basket and text envelope on the right](../../docs/assets/shelf-light.png)
 
 <p align="center">
-  <a href="https://github.com/lurrrrrr/PickSnap/releases/latest"><strong>Download the latest version</strong></a>
-  ·
-  <a href="README.md">简体中文</a> ·
-  <a href="README.en.md">English</a> ·
-  <a href="README.zh-TW.md">繁體中文</a> ·
+  <a href="https://github.com/lurrrrrr/PickSnap/releases/latest"><strong>Download the latest version ›</strong></a>
+</p>
+
+
+<p align="center">
+  <a href="../../README.md">简体中文</a> ·
+  English ·
+  <a href="README.zh-Hant.md">繁體中文</a> ·
   <a href="README.ja.md">日本語</a>
 </p>
 
 <p align="center">
   <a href="https://github.com/lurrrrrr/PickSnap/releases/latest"><img src="https://img.shields.io/github/v/release/lurrrrrr/PickSnap?style=flat-square&label=release&color=2563eb" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-0078d4?style=flat-square" alt="Windows 10 and 11">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-475569?style=flat-square" alt="MIT license"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-475569?style=flat-square" alt="MIT license"></a>
 </p>
-
-![Screenshots hanging along the top edge of the screen, with the image basket and text envelope on the right](docs/assets/shelf-light.png)
 
 ---
 
@@ -29,7 +32,7 @@
 
 Every screenshot on the line hangs from a small aluminium clip. It is not decoration — it is the only handle that image has. Copy it, pin it, move it: it all happens on that clip.
 
-![Hold the clip above a screenshot and drag left or right to move it freely along the line](docs/assets/clip-drag.gif)
+![Hold the clip above a screenshot and drag left or right to move it freely along the line](../../docs/assets/clip-drag.gif)
 
 | Gesture | Result |
 | --- | --- |
@@ -42,7 +45,7 @@ The new order is remembered and restored on the next launch.
 
 The line can hold far more than one screen: scroll horizontally with the wheel, drag an image to either end to keep the line scrolling, and it settles into alignment when you stop, so no image is left hanging half off the edge.
 
-![Scroll horizontally across the whole line](docs/assets/rope-scroll.gif)
+![Scroll horizontally across the whole line](../../docs/assets/rope-scroll.gif)
 
 ---
 
@@ -70,7 +73,7 @@ Click the clip above an image (press and release) and it detaches from the line 
 
 Keep the screenshots you do not need right now here. Select by clicking or rubber-band, then hang a whole selection back on the line. To take an image off the line, drag it onto the basket icon at the right end, or straight into the basket window if it is open.
 
-![Drag an image onto the basket on the right to take it off the line](docs/assets/drop-basket.gif)
+![Drag an image onto the basket on the right to take it off the line](../../docs/assets/drop-basket.gif)
 
 "Auto-clean images older than 7 days" at the top of the basket window is off by default; when enabled, screenshots older than 7 days are moved to the Recycle Bin (see the FAQ below).
 
@@ -78,7 +81,7 @@ Keep the screenshots you do not need right now here. Select by clicking or rubbe
 
 Text you copy is collected automatically, with full-text search and one-click copy that preserves line breaks and indentation. After deleting, you have 5 seconds to click "Undo" and put it back. Only the most recent 100 entries are kept.
 
-<p align="center"><img src="docs/assets/text-window.png" width="330" alt="Text envelope: search box, collected text, copy and delete, with undo after delete"></p>
+<p align="center"><img src="../../docs/assets/text-window.png" width="330" alt="Text envelope: search box, collected text, copy and delete, with undo after delete"></p>
 
 **Region capture**
 
@@ -91,7 +94,7 @@ Five ropes (classic silver-grey, linen with wooden clips, porcelain, pastel, gra
 <details>
 <summary>Dark mode</summary>
 
-![The line in dark mode](docs/assets/shelf-dark.png)
+![The line in dark mode](../../docs/assets/shelf-dark.png)
 
 </details>
 
@@ -119,7 +122,7 @@ cd PickSnap
 ./scripts/build.ps1
 ```
 
-Output goes to `build\`; run `build\PickSnap.exe`. Use `./scripts/build.ps1 -Package` to produce the release zip.
+Source in `src\`, third-party components in `vendor\`, build and packaging scripts in `scripts\`. Output goes to `build\`; run `build\PickSnap.exe`. Use `./scripts/build.ps1 -Package` to produce the release zip.
 
 ---
 
@@ -221,19 +224,6 @@ Right-click the tray icon → "More" → "Check for updates", then restart once 
 
 ---
 
-## Development
-
-C# + WPF (.NET Framework 4.8), compiled directly with `csc`, no MSBuild dependency.
-
-```powershell
-./scripts/build.ps1          # build
-./scripts/build.ps1 -Package # build and create the release zip
-```
-
-Source in `src\`, third-party components in `vendor\`, build and packaging scripts in `scripts\`.
-
----
-
 ## Credits and license
 
 This project is derived from the following open-source projects — thanks to their authors:
@@ -241,4 +231,4 @@ This project is derived from the following open-source projects — thanks to th
 - [Tendedero](https://github.com/alejandrobujan/tendedero): the original macOS project by [Alejandro Buján](https://github.com/alejandrobujan)
 - [PicRope](https://github.com/Renly1994/PicRope): the Windows port by [Renly1994](https://github.com/Renly1994)
 
-Original copyright belongs to Alejandro Buján and is released under the MIT license; the modifications in this repository use MIT as well. Under the upstream "name and icon" clause, this project uses its own name "PickSnap / 拾帧" and its own icon. The full provenance chain and third-party notices are in [NOTICE](NOTICE); license terms are in [LICENSE](LICENSE).
+Original copyright belongs to Alejandro Buján and is released under the MIT license; the modifications in this repository use MIT as well. Under the upstream "name and icon" clause, this project uses its own name "PickSnap / 拾帧" and its own icon. The full provenance chain and third-party notices are in [NOTICE](../../NOTICE); license terms are in [LICENSE](../../LICENSE).

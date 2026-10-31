@@ -1,27 +1,30 @@
 <p align="center">
-  <img src="src/assets/PickSnap.png" width="72" height="72" alt="拾幀圖示">
+  <img src="../../src/assets/PickSnap.png" width="72" height="72" alt="拾幀圖示">
 </p>
 
 <h1 align="center">拾幀 · PickSnap</h1>
 
-<p align="center">把螢幕截圖和複製過的文字掛在螢幕頂邊的一條繩子上。<br>要用的時候讓它滑下來，取走、換個位置，或者乾脆攤在桌面上。</p>
+<p align="center"><strong>晾衣繩式剪貼收納</strong>，把螢幕截圖和複製過的文字掛在螢幕頂邊，隨手取用，輕鬆留存、對照、編輯。</p>
+
+![螢幕頂邊掛著的幾張截圖，右側是圖片籃子與文字信封](../../docs/assets/shelf-light.png)
 
 <p align="center">
-  <a href="https://github.com/lurrrrrr/PickSnap/releases/latest"><strong>下載最新版本</strong></a>
-  ·
-  <a href="README.md">简体中文</a> ·
+  <a href="https://github.com/lurrrrrr/PickSnap/releases/latest"><strong>下載最新版本 ›</strong></a>
+</p>
+
+
+<p align="center">
+  <a href="../../README.md">简体中文</a> ·
   <a href="README.en.md">English</a> ·
-  <a href="README.zh-TW.md">繁體中文</a> ·
+  繁體中文 ·
   <a href="README.ja.md">日本語</a>
 </p>
 
 <p align="center">
   <a href="https://github.com/lurrrrrr/PickSnap/releases/latest"><img src="https://img.shields.io/github/v/release/lurrrrrr/PickSnap?style=flat-square&label=release&color=2563eb" alt="最新版本"></a>
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-0078d4?style=flat-square" alt="Windows 10 和 11">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-475569?style=flat-square" alt="MIT 授權"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-475569?style=flat-square" alt="MIT 授權"></a>
 </p>
-
-![螢幕頂邊掛著的幾張截圖，右側是圖片籃子與文字信封](docs/assets/shelf-light.png)
 
 ---
 
@@ -29,7 +32,7 @@
 
 繩上的每張截圖，頭頂都別著一顆鋁夾。它不是裝飾，是這張圖唯一的把手——複製、釘到桌面、換位置，全在這一顆夾子上。
 
-![按住圖片上方的小夾子左右拖動，自由調整它在繩上的位置](docs/assets/clip-drag.gif)
+![按住圖片上方的小夾子左右拖動，自由調整它在繩上的位置](../../docs/assets/clip-drag.gif)
 
 | 手勢 | 結果 |
 | --- | --- |
@@ -42,7 +45,7 @@
 
 圖片掛多了也看得過來：滾輪橫向瀏覽整條繩子，把圖片拖到繩子兩端時繩子會連續捲動，停下時自動對齊，圖片不會卡在邊緣只露出一半。
 
-![滾輪橫向瀏覽整條繩子](docs/assets/rope-scroll.gif)
+![滾輪橫向瀏覽整條繩子](../../docs/assets/rope-scroll.gif)
 
 ---
 
@@ -70,7 +73,7 @@
 
 暫時用不到的截圖收在這裡，支援點選與框選，選取後一次掛回繩子。繩上的圖片拖到右端的籃子圖示，或直接拖進開啟中的籃子視窗，即可取下。
 
-![把圖片拖到右側的籃子上，從繩上取下](docs/assets/drop-basket.gif)
+![把圖片拖到右側的籃子上，從繩上取下](../../docs/assets/drop-basket.gif)
 
 籃子視窗頂部的「自動清理 7 天前的舊圖」預設關閉，開啟後超過 7 天的截圖會自動移入回收站（詳見下方常見問題）。
 
@@ -78,7 +81,7 @@
 
 剪貼簿裡的文字自動收進來，支援全文搜尋與一鍵複製，換行與縮排都會保留。刪除後 5 秒內可按「復原」放回原來的位置，只保留最近 100 則。
 
-<p align="center"><img src="docs/assets/text-window.png" width="330" alt="文字信封：搜尋框、文字記錄、複製與刪除，刪除後可復原"></p>
+<p align="center"><img src="../../docs/assets/text-window.png" width="330" alt="文字信封：搜尋框、文字記錄、複製與刪除，刪除後可復原"></p>
 
 **區域截圖**
 
@@ -91,7 +94,7 @@
 <details>
 <summary>深色模式</summary>
 
-![深色模式下的掛繩](docs/assets/shelf-dark.png)
+![深色模式下的掛繩](../../docs/assets/shelf-dark.png)
 
 </details>
 
@@ -119,7 +122,7 @@ cd PickSnap
 ./scripts/build.ps1
 ```
 
-編譯產物在 `build\`，執行 `build\PickSnap.exe` 即可；產生發布壓縮包用 `./scripts/build.ps1 -Package`。
+原始碼在 `src\`，第三方元件在 `vendor\`，建置與打包指令碼在 `scripts\`。編譯產物在 `build\`，執行 `build\PickSnap.exe` 即可；產生發布壓縮包用 `./scripts/build.ps1 -Package`。
 
 ---
 
@@ -221,19 +224,6 @@ PNG、JPG、BMP、GIF、TIF。GIF 與 TIF 只取第一幀用於編輯，裁切�
 
 ---
 
-## 開發
-
-C# + WPF（.NET Framework 4.8），使用 `csc` 直接編譯，無 MSBuild 依賴。
-
-```powershell
-./scripts/build.ps1          # 編譯
-./scripts/build.ps1 -Package # 編譯並產生發布用 zip
-```
-
-原始碼在 `src\`，第三方元件在 `vendor\`，建置與打包指令碼在 `scripts\`。
-
----
-
 ## 致謝與授權
 
 本專案基於以下開源專案修改而來，感謝原作者：
@@ -241,4 +231,4 @@ C# + WPF（.NET Framework 4.8），使用 `csc` 直接編譯，無 MSBuild 依�
 - [Tendedero](https://github.com/alejandrobujan/tendedero)：macOS 原始專案，作者 [Alejandro Buján](https://github.com/alejandrobujan)
 - [PicRope](https://github.com/Renly1994/PicRope)：Windows 移植版，作者 [Renly1994](https://github.com/Renly1994)
 
-原始版權歸 Alejandro Buján 所有，以 MIT 授權發布，本儲存庫的修改部分同樣使用 MIT。依上游授權中的「名稱與圖示」條款，本專案使用獨立名稱「拾幀 / PickSnap」與自行設計的圖示。完整的來源脈絡與第三方元件聲明見 [NOTICE](NOTICE)，授權條款見 [LICENSE](LICENSE)。
+原始版權歸 Alejandro Buján 所有，以 MIT 授權發布，本儲存庫的修改部分同樣使用 MIT。依上游授權中的「名稱與圖示」條款，本專案使用獨立名稱「拾幀 / PickSnap」與自行設計的圖示。完整的來源脈絡與第三方元件聲明見 [NOTICE](../../NOTICE)，授權條款見 [LICENSE](../../LICENSE)。

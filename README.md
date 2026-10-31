@@ -4,15 +4,20 @@
 
 <h1 align="center">拾帧 · PickSnap</h1>
 
-<p align="center">把截图和复制过的文字挂在屏幕顶边的一条绳子上。<br>要用的时候让它滑下来，取走、换个位置，或者干脆摊在桌面上。</p>
+<p align="center"><strong>晾衣绳式剪贴收纳</strong>，把截图和复制的文字挂在屏幕顶边，随手取用，轻松留存、对照、编辑。</p>
+
+![屏幕顶边挂着的几张截图，右侧是图片篮子与文字信封](docs/assets/shelf-light.png)
 
 <p align="center">
-  <a href="https://github.com/lurrrrrr/PickSnap/releases/latest"><strong>下载最新版本</strong></a>
-  ·
-  <a href="README.md">简体中文</a> ·
-  <a href="README.en.md">English</a> ·
-  <a href="README.zh-TW.md">繁體中文</a> ·
-  <a href="README.ja.md">日本語</a>
+  <a href="https://github.com/lurrrrrr/PickSnap/releases/latest"><strong>下载最新版本 ›</strong></a>
+</p>
+
+
+<p align="center">
+  简体中文 ·
+  <a href="docs/i18n/README.en.md">English</a> ·
+  <a href="docs/i18n/README.zh-Hant.md">繁體中文</a> ·
+  <a href="docs/i18n/README.ja.md">日本語</a>
 </p>
 
 <p align="center">
@@ -20,8 +25,6 @@
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-0078d4?style=flat-square" alt="Windows 10 和 11">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-475569?style=flat-square" alt="MIT 许可"></a>
 </p>
-
-![屏幕顶边挂着的几张截图，右侧是图片篮子与文字信封](docs/assets/shelf-light.png)
 
 ---
 
@@ -119,7 +122,7 @@ cd PickSnap
 ./scripts/build.ps1
 ```
 
-编译产物在 `build\`，运行 `build\PickSnap.exe` 即可；生成发布压缩包用 `./scripts/build.ps1 -Package`。
+源码在 `src\`，第三方组件在 `vendor\`，构建与打包脚本在 `scripts\`。编译产物在 `build\`，运行 `build\PickSnap.exe` 即可；生成发布压缩包用 `./scripts/build.ps1 -Package`。
 
 ---
 
@@ -218,19 +221,6 @@ PNG、JPG、BMP、GIF、TIF。GIF 与 TIF 只取第一帧用于编辑，裁剪�
 托盘右键 →「更多操作」→「检查更新」，下载完成后重启即可。图片、设置与开机启动项都会保留。
 
 </details>
-
----
-
-## 开发
-
-C# + WPF（.NET Framework 4.8），使用 `csc` 直接编译，无 MSBuild 依赖。
-
-```powershell
-./scripts/build.ps1          # 编译
-./scripts/build.ps1 -Package # 编译并生成发布用 zip
-```
-
-源码在 `src\`，第三方组件在 `vendor\`，构建与打包脚本在 `scripts\`。
 
 ---
 
