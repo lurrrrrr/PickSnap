@@ -120,7 +120,7 @@ namespace ScreenLine
             // 快捷操作行：仿 Win11 右键菜单顶部，图标在上、名称在下，一行放下最常用的动作。
             VisibilityButton = Quick("显示绳子", "show");
             CaptureButton = Quick("区域截图", "capture");
-            BasketButton = Quick("图片篮子", "folder");
+            BasketButton = Quick("图片篮子", "basket");
             TextButton = Quick("文字信封", "envelope");
             var quickRow = new Grid { Margin = new Thickness(6, 2, 6, 2) };
             var quicks = new[] { VisibilityButton, CaptureButton, BasketButton, TextButton };

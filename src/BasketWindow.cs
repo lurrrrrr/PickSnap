@@ -64,7 +64,7 @@ namespace ScreenLine
         readonly HashSet<string> selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         // 当前框选手势造成的选中：矩形变动时据此实时反选，手势结束即清空。
         readonly HashSet<string> bandTouched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        readonly UniformGrid thumbnails = new UniformGrid { Columns = 3 };
+        readonly UniformGrid thumbnails = new UniformGrid { Columns = 3, VerticalAlignment = VerticalAlignment.Top };
         readonly ScrollViewer scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         readonly TextBlock empty = new TextBlock { TextAlignment = TextAlignment.Center, Foreground = LightTheme.Brush("#65717F"), FontSize = 14, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
         readonly TextBlock status = new TextBlock { FontSize = 14, Foreground = LightTheme.Brush("#283343"), VerticalAlignment = VerticalAlignment.Center };
@@ -93,13 +93,15 @@ namespace ScreenLine
         CaptureItem previewItem;
         ImageContent previewContent;
         int previewVersion;
-        double thumbnailHeight = 140;
+        // 缩略图高度固定：行距与分布不随图片多少变化，视觉与三排三列时一致。
+        const double thumbnailHeight = 140;
         internal int SelectedCount { get { return selected.Count; } }
         internal Image Preview { get { return preview; } }
         internal int VisibleCount { get { return choices.Count; } }
         internal Button ChoiceFor(string path) { return choices[path]; }
 
-        public BasketWindow(Gallery gallery, Action<bool> setAutoHang, Action<CaptureItem> hang, Action<ShotAction, CaptureItem> act, Func<string, bool> isPinned = null, Func<int> ropeRoom = null, Func<int> ropeCapacity = null)
+        public BasketWindow(Gallery gallery, Action<bool> setAutoHang, Action<CaptureItem> hang, Action<ShotAction, CaptureItem> act, Func<string, bool> isPinned = null, Func<int> ropeRoom = null, Func<int> ropeCapacity = null,
+            Func<bool> getAutoPurge = null, Action<bool> setAutoPurge = null)
         {
             this.gallery = gallery; this.setAutoHang = setAutoHang; this.hang = hang; this.act = act; this.isPinned = isPinned; this.ropeRoom = ropeRoom; this.ropeCapacity = ropeCapacity;
             Title = "图片篮子 · 拾帧";
@@ -123,6 +125,31 @@ namespace ScreenLine
             body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(68) });
             var card = LightTheme.Card(body); card.Padding = new Thickness(0); Content = card;
 
+            // 面板本身也是拖放目标：绳子上的图片不必瞄准右端的小图标，
+            // 直接拖进打开着的篮子窗口就能收下（与拖到篮子图标等效，松手只取第一张）。
+            AllowDrop = true;
+            DragOver += delegate(object sender, DragEventArgs e)
+            {
+                string[] paths = e.Data.GetData(DataFormats.FileDrop) as string[];
+                bool match = paths != null && paths.Any(path => gallery.Contains(path));
+                e.Effects = match ? DragDropEffects.Move : DragDropEffects.None;
+                e.Handled = true;
+                card.BorderBrush = LightTheme.Brush(match ? "#2463AE" : "#E0E4EA");
+            };
+            DragLeave += delegate { card.BorderBrush = LightTheme.Brush("#E0E4EA"); };
+            Drop += delegate(object sender, DragEventArgs e)
+            {
+                card.BorderBrush = LightTheme.Brush("#E0E4EA");
+                string[] paths = e.Data.GetData(DataFormats.FileDrop) as string[];
+                if (paths != null)
+                    foreach (string path in paths)
+                    {
+                        var item = gallery.Collected.FirstOrDefault(image => FileRules.SameFile(image.Path, path));
+                        if (item != null && gallery.Contains(path)) { act(ShotAction.Remove, item); break; }
+                    }
+                e.Handled = true;
+            };
+
             var heading = new Grid { Margin = new Thickness(22, 0, 18, 0) };
             heading.ColumnDefinitions.Add(new ColumnDefinition());
             heading.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -137,11 +164,26 @@ namespace ScreenLine
                 <Border x:Name='Knob' Width='16' Height='16' CornerRadius='8' Background='White' HorizontalAlignment='Left' Margin='2,0'/>
               </Border><ControlTemplate.Triggers>
                 <Trigger Property='IsChecked' Value='True'><Setter TargetName='Track' Property='Background' Value='#2463AE'/><Setter TargetName='Knob' Property='HorizontalAlignment' Value='Right'/></Trigger>
-                <Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Track' Property='BorderBrush' Value='#283343'/></Trigger>
               </ControlTemplate.Triggers></ControlTemplate>"));
             AutomationProperties.SetName(AutoHang, "新图片自动上绳");
             AutoHang.Checked += AutoChanged; AutoHang.Unchecked += AutoChanged;
             tools.Children.Add(AutoHang);
+            if (getAutoPurge != null && setAutoPurge != null)
+            {
+                // 旧图清理收敛为篮子里的一句话规则：超过 7 天的截图自动移到回收站；开关状态由 App 持久保存。
+                // 放在头部「新图片自动上绳」左侧，两个开关并排。
+                var purgeLabel = new TextBlock { Text = "自动清理 7 天前的旧图", FontSize = 12, Foreground = LightTheme.Brush("#65717F"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+                var autoPurge = new CheckBox { VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand,
+                    ToolTip = "开启后：超过 7 天的截图自动移到回收站，开启时立即检查一次，之后启动时和每 6 小时检查一次。只处理收集文件夹里的副本，外部添加的原图只移除记录、不删文件。" };
+                autoPurge.Template = AutoHang.Template;
+                autoPurge.IsChecked = getAutoPurge();
+                AutomationProperties.SetName(autoPurge, "自动清理 7 天前的旧图");
+                autoPurge.Checked += delegate { setAutoPurge(true); };
+                autoPurge.Unchecked += delegate { setAutoPurge(false); };
+                tools.Children.Insert(0, autoPurge);
+                tools.Children.Insert(0, purgeLabel);
+                ((TextBlock)tools.Children[2]).Margin = new Thickness(26, 0, 10, 0);
+            }
             var close = LightTheme.Button("", Close, "quiet"); close.Content = LightTheme.CloseIcon();
             close.Width = close.Height = 28; close.MinWidth = 0; close.Padding = new Thickness(0); close.Margin = new Thickness(22, 0, 0, 0);
             AutomationProperties.SetName(close, "关闭图片篮子"); tools.Children.Add(close); Grid.SetColumn(tools, 1); heading.Children.Add(tools);
@@ -454,17 +496,7 @@ namespace ScreenLine
         void UpdateThumbnails()
         {
             if (closed) return;
-            if (scroll.ViewportHeight > 0 && pictures.Count > 0)
-            {
-                var first = pictures.First();
-                var slot = (FrameworkElement)first.Value.Parent;
-                var choice = choices[first.Key.Path];
-                double spacing = choice.ActualHeight > 0 ? choice.ActualHeight - slot.ActualHeight + choice.Margin.Top + choice.Margin.Bottom : 44;
-                int rows = Math.Max(1, (int)Math.Ceiling(scroll.ViewportHeight / 180));
-                thumbnailHeight = Math.Max(40, Math.Ceiling(scroll.ViewportHeight / rows - spacing + 1));
-                foreach (var picture in pictures.Values)
-                    if (Math.Abs(((FrameworkElement)picture.Parent).Height - thumbnailHeight) > 0.5) ((FrameworkElement)picture.Parent).Height = thumbnailHeight;
-            }
+            // 缩略图高度固定，不随可视区或图片数量撑缩：两张和三排时间距、分布保持一致。
             var viewport = new Rect(0, 0, scroll.ActualWidth, scroll.ActualHeight);
             visiblePictures.Clear();
             foreach (var entry in pictures)

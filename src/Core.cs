@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 using System.Windows;
+using Microsoft.VisualBasic.FileIO;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -30,11 +31,15 @@ namespace ScreenLine
         public string SkippedUpdate { get; set; }
         public uint CaptureModifiers { get; set; }
         public uint CaptureKey { get; set; }
+        // 旧图自动清理：默认关闭。开启后按天数把过期的图片移出（收集文件夹内的副本进回收站）。
+        public bool AutoPurge { get; set; }
+        // 保留最近多少天的截图：配合上面的开关使用，默认 7 天。
+        public int AutoPurgeDays { get; set; }
         public List<string> Images { get; set; }
         public List<string> Collection { get; set; }
         public List<TextItem> Texts { get; set; }
 
-        public SavedState() { Images = new List<string>(); Collection = new List<string>(); Texts = new List<TextItem>(); CardOffsets = new Dictionary<string, double>(); Theme = "classic"; AppTheme = "auto"; AutoHang = true; HoverPreview = true; CaptureModifiers = 3; CaptureKey = (uint)'S'; }
+        public SavedState() { Images = new List<string>(); Collection = new List<string>(); Texts = new List<TextItem>(); CardOffsets = new Dictionary<string, double>(); Theme = "classic"; AppTheme = "auto"; AutoHang = true; HoverPreview = true; AutoPurgeDays = 7; CaptureModifiers = 3; CaptureKey = (uint)'S'; }
     }
 
     internal sealed class StateStore
@@ -64,6 +69,7 @@ namespace ScreenLine
                 if (State.Texts == null) State.Texts = new List<TextItem>();
                 if (State.CardOffsets == null) State.CardOffsets = new Dictionary<string, double>();
                 if (string.IsNullOrEmpty(State.AppTheme)) State.AppTheme = "auto";
+                if (State.AutoPurgeDays <= 0) State.AutoPurgeDays = 7;
             }
             catch (ArgumentException ex) { Log(ex); }
             catch (InvalidOperationException ex) { Log(ex); }
@@ -807,6 +813,39 @@ namespace ScreenLine
             if (removed == 0) return;
             Save();
             Notify();
+        }
+
+        // 清理「几天前」的旧图：超过这个时间的记录全部移出清单，
+        // 收集文件夹内的副本同时送进回收站（还能找回），手动添加的图片只移除记录、不改动原文件。
+        // 返回实际清理的张数。
+        public int PurgeOlderThan(int days)
+        {
+            if (days <= 0) return 0;
+            DateTime deadline = DateTime.UtcNow.AddDays(-days);
+            var stale = Collected.Where(item => Stamp(item) < deadline).ToArray();
+            if (stale.Length == 0) return 0;
+            var removed = new HashSet<CaptureItem>(stale);
+            foreach (var item in stale)
+            {
+                if (!FileRules.IsInside(item.Path, Store.Inbox)) continue;
+                try
+                {
+                    if (File.Exists(item.Path)) FileSystem.DeleteFile(item.Path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin, UICancelOption.DoNothing);
+                }
+                catch (Exception error) { Store.Log(error); }
+            }
+            Items.RemoveAll(item => removed.Contains(item));
+            Collected.RemoveAll(item => removed.Contains(item));
+            Save();
+            Notify();
+            return stale.Length;
+        }
+
+        // 判断「新旧」优先看文件当前的修改时间：截图被标注、被替换过之后记录里的旧时间不再准确。
+        static DateTime Stamp(CaptureItem item)
+        {
+            try { return File.Exists(item.Path) ? File.GetLastWriteTimeUtc(item.Path) : item.Written; }
+            catch { return item.Written; }
         }
 
         public void Notify() { if (Changed != null) Changed(); }

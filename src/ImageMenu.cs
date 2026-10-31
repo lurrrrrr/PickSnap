@@ -96,10 +96,10 @@ namespace ScreenLine
             heading.Children.Add(details); panel.Children.Add(heading);
             panel.Children.Add(Action("打开", "open", ShotAction.Open, execute));
             panel.Children.Add(Action("编辑", "edit", ShotAction.Edit, execute));
-            panel.Children.Add(Action("保存副本…", "save", ShotAction.Save, execute));
+            panel.Children.Add(Action("保存副本", "save", ShotAction.Save, execute));
             panel.Children.Add(Action("打开位置", "folder", ShotAction.Locate, execute));
             panel.Children.Add(new Border { Height = 1, Background = LightTheme.Brush("#E8EBEF"), Margin = new Thickness(6, 4, 6, 4) });
-            panel.Children.Add(Action("取下放篮子", "folder", ShotAction.Remove, execute));
+            panel.Children.Add(Action("取下放篮子", "clear", ShotAction.Remove, execute));
             var bulk = new Menu { Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0) };
             BulkMenu.Style = bulkStyle; BulkMenu.Width = 180;
             BulkMenu.FontFamily = FontFamily; BulkMenu.FontSize = FontSize;

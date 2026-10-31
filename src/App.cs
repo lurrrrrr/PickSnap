@@ -19,9 +19,9 @@ using Forms = System.Windows.Forms;
 [assembly: AssemblyTitle("PickSnap · 拾帧")]
 [assembly: AssemblyProduct("PickSnap")]
 [assembly: AssemblyDescription("拾帧：把截图挂在屏幕上沿，随手复制、拖拽和保存。")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
-[assembly: AssemblyInformationalVersion("1.0.0")]
+[assembly: AssemblyVersion("1.0.1.0")]
+[assembly: AssemblyFileVersion("1.0.1.0")]
+[assembly: AssemblyInformationalVersion("1.0.1")]
 
 namespace ScreenLine
 {
@@ -51,6 +51,8 @@ namespace ScreenLine
         int lastCollectedCount;
         readonly DispatcherTimer updateTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
         readonly MenuItem updateMenu;
+        // 每 6 小时复查一次旧图：软件常驻数天也不会错过清理时机。（开关在图片篮子面板底部）
+        readonly DispatcherTimer purgeTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(6) };
         readonly bool automaticUpdates;
         UpdateRelease availableUpdate;
         UpdateWindow updateWindow;
@@ -137,7 +139,7 @@ namespace ScreenLine
             previewToggle.IsCheckable = true;
             previewToggle.IsChecked = store.State.HoverPreview;
             previewToggle.ToolTip = "开启后，鼠标停在绳子上的图片会浮出一块放大预览";
-            shortcutItem = more.AddAction("截图快捷键…", "shortcut", delegate
+            shortcutItem = more.AddAction("截图快捷键", "shortcut", delegate
             {
                 if (ShortcutSettings != null) { ShortcutSettings.Activate(); return; }
                 ShortcutSettings = new ShortcutWindow(store.State.CaptureModifiers, store.State.CaptureKey, SetCaptureShortcut);
@@ -145,7 +147,7 @@ namespace ScreenLine
             });
             UpdateCaptureLabel();
             more.Separator();
-            more.AddAction("添加图片…", "add", async delegate
+            more.AddAction("添加图片", "add", async delegate
             {
                 var picker = new OpenFileDialog { Title = "添加图片", Filter = "图片|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff", Multiselect = true };
                 if (picker.ShowDialog() != true) return;
@@ -157,7 +159,10 @@ namespace ScreenLine
                 try { WindowsShell.OpenInbox(store); }
                 catch (Exception error) { store.Log(error); Notice("无法打开收集文件夹：" + error.Message); }
             });
-            more.AddAction("全部取下（保留文件）", "clear", delegate { Gallery.Clear(); });
+            more.AddAction("全部收进篮子", "clear", delegate { Gallery.Clear(); });
+            // 旧图清理的开关放在图片篮子面板底部（与篮子相关的操作收在一处），这里只保留定时器。
+            purgeTimer.Tick += delegate { RunAutoPurge(false); };
+            if (store.State.AutoPurge) purgeTimer.Start();
             more.Separator();
             MenuItem startup = null;
             startup = more.AddAction("开机启动", "startup", delegate
@@ -175,7 +180,7 @@ namespace ScreenLine
                 try { Notice(DesktopController.CreateDesktopShortcut() ? "已在桌面创建「PickSnap」快捷方式" : "快捷方式创建失败，请检查桌面目录权限"); }
                 catch (Exception error) { store.Log(error); Notice("快捷方式创建失败：" + error.Message); }
             });
-            updateMenu = more.AddAction("检查更新…", "save", async delegate { await CheckForUpdates(true); });
+            updateMenu = more.AddAction("检查更新", "refresh", async delegate { await CheckForUpdates(true); });
             updateTimer.Tick += async delegate { updateTimer.Interval = TimeSpan.FromHours(12); await CheckForUpdates(false); };
             tray.BalloonTipClicked += delegate { ShowUpdate(); };
             TrayMenu.OnAction(TrayMenu.ExitButton, Exit);
@@ -195,12 +200,39 @@ namespace ScreenLine
             Shelf.Show();
             Shelf.Reveal(true, false, 4);
             await Captures.Start();
+            RunAutoPurge(false);
             if (automaticUpdates) updateTimer.Start();
+        }
+
+        // 旧图保留天数固定为 7：不给用户一个需要理解的档位设置，规则一句话能说清。
+        const int PurgeDays = 7;
+
+        // 图片篮子面板底部的开关回调：开启后立刻清一次，之后启动时与每 6 小时复查；状态持久保存。
+        internal void SetAutoPurge(bool on)
+        {
+            Gallery.Store.State.AutoPurge = on;
+            Gallery.Store.Save();
+            if (on) { purgeTimer.Start(); RunAutoPurge(true); }
+            else { purgeTimer.Stop(); Notice("已关闭旧图自动清理"); }
+        }
+
+        // 按天数清理过期截图：notify 为 false 时只在真的清掉了东西才提示，避免每次启动打扰。
+        void RunAutoPurge(bool notify)
+        {
+            // notify=true 来自手动操作（开关刚被打开），不受自动开关限制；定时器/启动触发的静默清理才要求开关已开。
+            if (disposed || (!notify && !Gallery.Store.State.AutoPurge)) return;
+            try
+            {
+                int removed = Gallery.PurgeOlderThan(PurgeDays);
+                if (removed > 0) Notice("已自动清理 " + removed + " 张超过 " + PurgeDays + " 天的截图，文件已进回收站");
+                else if (notify) Notice("已开启旧图自动清理：当前没有超过 " + PurgeDays + " 天的截图");
+            }
+            catch (Exception error) { Gallery.Store.Log(error); if (notify) Notice("清理未完成：" + error.Message); }
         }
 
         void UpdateCaptureLabel()
         {
-            // 快捷键显示在「更多操作 › 截图快捷键…」行尾；不放快捷格 ToolTip——
+            // 快捷键显示在「更多操作 › 截图快捷键」行尾；不放快捷格 ToolTip——
             // 托盘面板是穿透/捕获频繁的窗口，ToolTip 一旦弹出常因收不到移开事件而卡住不消失。
             if (shortcutItem != null)
                 shortcutItem.InputGestureText = events.CaptureShortcutAvailable ? ShortcutWindow.Label(Gallery.Store.State.CaptureModifiers, Gallery.Store.State.CaptureKey) : "快捷键被占用";
@@ -246,7 +278,7 @@ namespace ScreenLine
         {
             if (disposed || checkingUpdates) return;
             if (manual && availableUpdate != null) { ShowUpdate(); return; }
-            checkingUpdates = true; updateMenu.IsEnabled = false; updateMenu.Header = "正在检查更新…";
+            checkingUpdates = true; updateMenu.IsEnabled = false; updateMenu.Header = "正在检查更新";
             try
             {
                 availableUpdate = await updates.CheckAsync(updateLifetime.Token);
@@ -268,7 +300,7 @@ namespace ScreenLine
             finally
             {
                 checkingUpdates = false; updateMenu.IsEnabled = true;
-                updateMenu.Header = availableUpdate == null ? "检查更新…" : "更新到 " + availableUpdate.Version + "…";
+                updateMenu.Header = availableUpdate == null ? "检查更新" : "更新到 " + availableUpdate.Version;
             }
         }
 
@@ -288,7 +320,7 @@ namespace ScreenLine
                 Gallery.Store.State.SkippedUpdate = availableUpdate.Version;
                 Gallery.Store.Save();
                 availableUpdate = null;
-                updateMenu.Header = "检查更新…";
+                updateMenu.Header = "检查更新";
             });
             updateWindow.Closed += delegate { updateWindow = null; };
             updateWindow.Show();
@@ -345,7 +377,8 @@ namespace ScreenLine
         {
             if (Basket != null) { Basket.Activate(); return; }
             Gallery.Prune();
-            Basket = new BasketWindow(Gallery, delegate(bool value) { Captures.AutoHang = value; }, Captures.Hang, Act, Shelf.IsPinned, Shelf.RoomForHanging, () => Shelf.RopeCapacity);
+            Basket = new BasketWindow(Gallery, delegate(bool value) { Captures.AutoHang = value; }, Captures.Hang, Act, Shelf.IsPinned, Shelf.RoomForHanging, () => Shelf.RopeCapacity,
+                () => Gallery.Store.State.AutoPurge, SetAutoPurge);
             Basket.Owner = Shelf;
             Shelf.ChoosingBasket = true;
             Shelf.Reveal(true, false, 0);
@@ -508,7 +541,7 @@ namespace ScreenLine
 
         public void Dispose()
         {
-            disposed = true; updateTimer.Stop(); updateLifetime.Cancel();
+            disposed = true; updateTimer.Stop(); purgeTimer.Stop(); updateLifetime.Cancel();
             if (Capture != null) Capture.Close();
             if (ShortcutSettings != null) ShortcutSettings.Close();
             if (updateWindow != null) updateWindow.Close();
