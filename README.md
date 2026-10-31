@@ -7,7 +7,7 @@
 <p align="center">截图和复制过的文字，先挂在屏幕顶上，用的时候随手取。</p>
 
 <p align="center">
-  <a href="https://github.com/lurrrrrr/PickSnap/releases/latest"><img src="https://img.shields.io/github/v/release/lurrrrrr/PickSnap?style=flat-square&label=release&color=2563eb" alt="最新版本"></a>
+  <a href="https://github.com/lurrrrrr/PickSnap/releases/latest"><img src="https://img.shields.io/github/v/releases/lurrrrrr/PickSnap?style=flat-square&label=release&color=2563eb" alt="最新版本"></a>
   <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-0078d4?style=flat-square" alt="Windows 10 和 11">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-475569?style=flat-square" alt="MIT 许可"></a>
 </p>
