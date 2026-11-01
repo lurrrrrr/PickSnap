@@ -38,7 +38,7 @@ Every screenshot on the line hangs from a small aluminium clip. It is not decora
 | --- | --- |
 | Click the image | Copy to clipboard |
 | Drag the image to another window | Drop it as an image file; the original stays on the line |
-| Click the clip above the image | Detach from the line and drop to the desktop as a pinned image you can drag and scale with the scroll wheel |
+| Click the clip above the image | Detach from the line and drop to the desktop as a pinned image you can drag and scale with the wheel |
 | **Hold the clip and drag left or right** | **Move the image freely along the line** |
 
 The new order is remembered and restored on the next launch.
@@ -67,7 +67,7 @@ The line can hold far more than one screen: scroll horizontally with the wheel, 
 
 **Pinned to the desktop**
 
-Click the clip above an image (press and release) and it detaches from the line and drops into an always-on-top window: drag it to move, scroll the wheel over it to scale (down to 8%, up to whatever the screen can hold). Move the mouse to the top center of the pinned image and a thumbtack button appears; click it to hang the image back where it was.
+Click the clip above an image (press and release) and it detaches from the line and drops into an always-on-top window that you can drag and scale with the wheel. Move the mouse to the top center of the pinned image and a thumbtack button appears; click it to hang the image back where it was.
 
 **Image basket**
 
@@ -144,7 +144,7 @@ Source in `src\`, third-party components in `vendor\`, build and packaging scrip
 | Open the original | Double-click it |
 | Move it along the line | Hold the clip above the image and drag left or right |
 | Pin to desktop / hang back | Click the clip / click the thumbtack on the pinned image |
-| Scale the pinned image | Scroll the wheel over it (about 12% per notch, 8% up to screen size) |
+| Scale the pinned image | Scroll wheel |
 | Move the pinned image | Drag it |
 | Annotate | Press and hold the image, or right-click → "Edit" |
 | Remove to basket | Right-click → "Remove to basket", or drag onto the basket icon |
