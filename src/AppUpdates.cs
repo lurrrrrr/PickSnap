@@ -46,7 +46,9 @@ namespace ScreenLine
                 using (var response = await client.GetAsync(Endpoint, timeout.Token).ConfigureAwait(false))
                 {
                     if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
-                    response.EnsureSuccessStatusCode();
+                    // 之前所有失败都笼统显示「无法连接」，但很多其实是限流：未认证接口每小时 60 次/IP。
+                    if ((int)response.StatusCode == 403) throw new InvalidDataException("GitHub 接口达到访问上限（未登录每小时 60 次），请稍后再试。");
+                    if (!response.IsSuccessStatusCode) throw new InvalidDataException("GitHub 返回错误 " + (int)response.StatusCode + "，请稍后再试。");
                     return Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(false), CurrentVersion);
                 }
             }
@@ -105,7 +107,7 @@ namespace ScreenLine
                             throw new InvalidDataException("更新包校验失败，请重新下载。");
                     Extract(archive, Path.Combine(work, "contents"), release.Version);
                     cancellation.ThrowIfCancellationRequested();
-                    File.Copy(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "update.ps1"), Path.Combine(work, "apply-update.ps1"));
+                    WriteUpdateScript(Path.Combine(work, "apply-update.ps1"));
                 }, cancellation).ConfigureAwait(false);
                 return work;
             }
@@ -146,6 +148,27 @@ namespace ScreenLine
                     + " -ParentProcessId " + Process.GetCurrentProcess().Id
             };
             using (var process = Process.Start(start)) { if (process == null) throw new IOException("无法启动更新安装程序。"); }
+        }
+
+        // 更新脚本优先取安装目录里的 update.ps1；从压缩包内直接运行、文件被杀毒软件隔离等
+        // 场景下该文件可能缺失，此时改用编译进 exe 的内嵌副本，更新不再因此中断。
+        public static void WriteUpdateScript(string destination)
+        {
+            string onDisk = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "update.ps1");
+            if (File.Exists(onDisk)) { File.Copy(onDisk, destination); return; }
+            using (var input = Assembly.GetExecutingAssembly().GetManifestResourceStream("PickSnap.UpdateScript"))
+            {
+                if (input == null) throw new IOException("找不到更新脚本，请重新下载完整安装包。");
+                using (var output = File.Create(destination)) input.CopyTo(output);
+            }
+        }
+
+        // 从压缩软件的临时解压目录（%TEMP% 下，例如 360 压缩的 360zip$Temp）直接运行时，
+        // 更新装进去关机即失，更新窗口据此直接给出「先解压再安装」的指引，而不是让人下载完再报错。
+        public static bool RunsFromTemporaryFolder()
+        {
+            try { return AppDomain.CurrentDomain.BaseDirectory.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase); }
+            catch { return false; }
         }
 
         public static void Discard(string work)

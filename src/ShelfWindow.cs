@@ -184,7 +184,6 @@ namespace ScreenLine
             ResizeMode = ResizeMode.NoResize;
             AllowsTransparency = true;
             Background = Brushes.Transparent;
-            LightTheme.SoftwareRender(this);
             ShowInTaskbar = false;
             ShowActivated = false;
             Topmost = true;
@@ -975,20 +974,19 @@ namespace ScreenLine
             if (closing || !cards.TryGetValue(path, out card) || card.Detached || card.Flying) return;
             MoveToDisplay();
             Reveal(true, false, 2, true);
-            if (Revealed) { revealMotion.Snap(0); slide.Y = 0; }
             if (!Revealed) return;
             card.BeginFlight();
             LayoutCards();
             SettleScrollFor(card);
-            PlayFlight(new ShotFlight(Display, card, origin, false, card.LandQuiet, picture));
+            PlayFlight(new ShotFlight(Display, card, origin, false, delegate { card.Land(); ropeMotion.Velocity += 12; }, picture));
         }
 
-        // 图片飞回绳子之前把横向滚动"定住"。
-        // 飞行终点取自 card.PhotoRect()（屏幕坐标），绳子一滚动，卡片屏幕位置就变：
-        // 若此时还在弹簧滚动、或停稳后被 SnapOffset 推去另一个停点，飞行图会一路追着绳子跑，
-        // 看起来就是"挂回绳子时绳子莫名动一下"。
+        // 图片飞回绳子之前把横向滚动「定住」。
+        // 原先无条件把 scrollMotion.Target 改成「让这张卡片居中」，绳子就会自己滑一下；
+        // 停稳后的 SnapOffset 吸附又会把已经静止的视图推到另一个停点。
         // 卡片已经在视野里就完全不碰滚动；确实滚出去了才一次性就位（不做渐变动画），
-        // 并抑制停稳吸附，避免刚定住又被推走。
+        // 并抑制停稳吸附，避免刚定住又被推走。绳形与卡片位置一并定住，保证飞行终点
+        // 取到的 card.PhotoRect() 到落地时不会偏移。
         void SettleScrollFor(ShotCard card)
         {
             viewport.UpdateLayout();
@@ -1006,8 +1004,6 @@ namespace ScreenLine
             scrollMotion.Snap(target);
             viewport.ScrollToHorizontalOffset(target);
             lastScrollOffset = target;
-            // 绳形与各卡片位置也一起定住：飞行终点取的是此刻 card.PhotoRect()，
-            // 之后任何弹簧位移都会让落地时的卡片偏离飞行图。
             ropeMotion.Snap(ropeMotion.Target);
             foreach (var item in cards.Values)
             {
@@ -1048,12 +1044,9 @@ namespace ScreenLine
                     var bounds = window.ReturnBounds;
                     MoveToDisplay();
                     Reveal(true, false, 3, true);
-                    // 绳子原本收起时下滑展开要几百毫秒，飞行终点却会取在还藏在屏幕外的位置。
-                    // 先让绳子就位，图片飞到时正好被接住。
-                    if (Revealed) { revealMotion.Snap(0); slide.Y = 0; }
                     LayoutCards();
                     SettleScrollFor(card);
-                    PlayFlight(new ShotFlight(Display, card, bounds, false, card.LandQuiet, window.Picture));
+                    PlayFlight(new ShotFlight(Display, card, bounds, false, card.Land, window.Picture));
                 };
                 card.DetachPhoto();
                 ropeMotion.Velocity -= 24;
@@ -1063,8 +1056,6 @@ namespace ScreenLine
             catch (Exception error) { gallery.Store.Log(error); card.ResetClip(); }
         }
 
-        // quiet=true：绳子展开时不给所有夹子来一下摆动（贴图挂回、编辑返回用），
-        // 下滑展开本身保留——绳子收起时挂回，必须先让它露出来。
         public void Reveal(bool shown, bool pin, double seconds, bool quiet = false)
         {
             pinned = pin;
@@ -1092,6 +1083,7 @@ namespace ScreenLine
             else
             {
                 if (nextGust == default(DateTime)) nextGust = DateTime.UtcNow.AddSeconds(7 + random.NextDouble() * 17);
+                // quiet=true：挂回/编辑返回时展开绳子，不给所有夹子来一下摆动。
                 if (!quiet) foreach (var card in cards.Values) card.Nudge(1.2);
             }
         }
@@ -1667,9 +1659,6 @@ namespace ScreenLine
         {
             Releasing = false;
             Flying = true;
-            // 贴图时 DetachPhoto 给 Opacity 挂过淡出动画，动画值优先于本地赋值；
-            // 不清掉的话下面这行 Opacity = 0 不生效，卡片会在飞行途中露出来。
-            BeginAnimation(OpacityProperty, null);
             drop.Snap(0);
             swing.Snap(0);
             entryTime = 0;
@@ -1679,41 +1668,18 @@ namespace ScreenLine
         public void Land()
         {
             if (IsDisposed) return;
-            // 落地直接把本体显示出来，不再淡入：飞行图与本体是上下叠放的两个窗口，
-            // 交叉淡入淡出的叠层 alpha 不互补，中间会透出背景闪一下。
-            // DetachPhoto 留下的 Opacity 淡出动画优先级高于本地赋值，必须一并清掉。
-            BeginAnimation(OpacityProperty, null);
             Flying = false;
-            entryTime = 1;   // Frame() 每帧都会算出 Opacity=1，不会重新淡入
-            Opacity = 1;     // 立即生效，不依赖渲染循环是否还在跑
+            entryTime = 0;
             Nudge(2.2);
         }
 
-        // 从贴图/编辑器挂回时用这个：落地不额外摆动，卡片静止接手飞行图。
-        public void LandQuiet()
-        {
-            if (IsDisposed) return;
-            BeginAnimation(OpacityProperty, null);
-            Flying = false;
-            entryTime = 1;
-            Opacity = 1;
-            swing.Snap(0);
-            // 飞行终点取的是 Surface 的布局尺寸，PhotoRect() 不含 photoScale。若卡片此刻
-            // 正好处于悬停放大（1.035）或按下缩小（0.95），落地显示就会比飞行图大/小一圈，
-            // 看着像「挂上去的瞬间放大一下」。落地统一归 1，让交接的两帧尺寸严格一致。
-            scaleMotion.Snap(1);
-            photoScale.ScaleX = photoScale.ScaleY = 1;
-        }
-
-        // 飞行落点是起飞瞬间算一次的固定矩形。若此时弹簧还在把卡片往目标位置推，
-        // 落地时卡片已经挪走，就会和飞行图错开；挂回前先把所有卡片定到最终位置。
+        // 飞行落点在起飞瞬间算一次并固定。若弹簧还在把卡片往目标位置推，
+        // 落地时卡片已经挪走，就会和飞行图错开；挂回前先把卡片定到最终位置。
         public void Settle()
         {
             xMotion.Snap(xMotion.Target);
             drop.Snap(0);
             swing.Snap(0);
-            scaleMotion.Snap(1);
-            photoScale.ScaleX = photoScale.ScaleY = 1;
             position.X = xMotion.Target;
         }
 
@@ -1783,7 +1749,6 @@ namespace ScreenLine
             WindowStyle = WindowStyle.None;
             AllowsTransparency = true;
             Background = Brushes.Transparent;
-            LightTheme.SoftwareRender(this);
             ShowActivated = false;
             ShowInTaskbar = false;
             Topmost = true;

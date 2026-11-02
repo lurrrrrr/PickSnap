@@ -23,7 +23,7 @@ $iconPath = Join-Path $projectRoot 'src\assets\PickSnap.ico'
 & (Join-Path $PSScriptRoot 'prepare-assets.ps1')
 $basketResources = Get-ChildItem -LiteralPath (Join-Path $buildPath 'runtime-assets') -Filter 'basket-*.png' | ForEach-Object { '/resource:' + $_.FullName + ',PickSnap.Basket.' + $_.BaseName.Substring(7) }
 $basketResources += @(Get-ChildItem -LiteralPath (Join-Path $buildPath 'runtime-assets') -Filter 'envelope-*.png' | ForEach-Object { '/resource:' + $_.FullName + ',PickSnap.Envelope.' + $_.BaseName.Substring(9) })
-& $compilerPath /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 "/out:$buildPath\PickSnap.exe" "/win32manifest:$manifestPath" "/win32icon:$iconPath" "/resource:$iconPath,PickSnap.Icon" $basketResources $references $sources
+& $compilerPath /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 "/out:$buildPath\PickSnap.exe" "/win32manifest:$manifestPath" "/win32icon:$iconPath" "/resource:$iconPath,PickSnap.Icon" "/resource:$(Join-Path $projectRoot 'scripts\update.ps1'),PickSnap.UpdateScript" $basketResources $references $sources
 if ($LASTEXITCODE -ne 0) { throw '应用构建失败' }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'src\App.config') -Destination (Join-Path $buildPath 'PickSnap.exe.config')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'update.ps1') -Destination $buildPath

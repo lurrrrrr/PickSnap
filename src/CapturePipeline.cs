@@ -120,7 +120,6 @@ namespace ScreenLine
         void AttachWatcher()
         {
             if (watcher != null || !Directory.Exists(folder)) return;
-            Trace("监听截图文件夹 " + folder);
             watcher = new FileSystemWatcher(folder) { NotifyFilter = NotifyFilters.FileName | NotifyFilters.Size | NotifyFilters.LastWrite };
             watcher.Created += delegate(object sender, FileSystemEventArgs args) { Queue(args.FullPath); };
             watcher.Changed += delegate(object sender, FileSystemEventArgs args) { Queue(args.FullPath); };
@@ -135,8 +134,8 @@ namespace ScreenLine
 
         void Queue(string path)
         {
-            if (!FileRules.IsImage(path) || disposed) { Trace("队列跳过 " + Path.GetFileName(path)); return; }
-            dispatcher.BeginInvoke(new Action(delegate { if (!disposed && !seen.Contains(path)) { pending[path] = 0; Trace("入队 " + Path.GetFileName(path)); } }));
+            if (!FileRules.IsImage(path) || disposed) { return; }
+            dispatcher.BeginInvoke(new Action(delegate { if (!disposed && !seen.Contains(path)) { pending[path] = 0; } }));
         }
 
         public void ClipboardChanged()
@@ -187,7 +186,7 @@ namespace ScreenLine
             {
                 ImageContent image = await Task.Run(() => ImageContent.Read(path));
                 if (disposed) return false;
-                if (source.HasValue && !receipts.Accept(image.Fingerprint, source.Value, DateTime.UtcNow)) { Trace("导入被去重拦截 " + Path.GetFileName(path)); return true; }
+                if (source.HasValue && !receipts.Accept(image.Fingerprint, source.Value, DateTime.UtcNow)) { return true; }
                 if (!source.HasValue && !FileRules.IsInside(path, gallery.Store.Inbox))
                 {
                     copy = await Task.Run(() => CopyToInbox(path));
@@ -206,9 +205,9 @@ namespace ScreenLine
                 }
                 return true;
             }
-            catch (IOException error) { Trace("导入失败(IO) " + Path.GetFileName(path) + " " + error.Message); return false; }
-            catch (NotSupportedException error) { Trace("导入失败(格式) " + Path.GetFileName(path) + " " + error.Message); return false; }
-            catch (UnauthorizedAccessException error) { Trace("导入失败(权限) " + Path.GetFileName(path) + " " + error.Message); return false; }
+            catch (IOException) { return false; }
+            catch (NotSupportedException) { return false; }
+            catch (UnauthorizedAccessException) { return false; }
             finally
             {
                 if (copy != null && !gallery.Collected.Any(i => FileRules.SameFile(i.Path, copy)) && File.Exists(copy)) File.Delete(copy);
@@ -283,16 +282,14 @@ namespace ScreenLine
                 string owner = WindowsNative.ClipboardOwnerName() ?? string.Empty;
                 ImageContent content = await Task.Run(() => ImageContent.Decode(picture.Bytes));
                 if (disposed || !CollectClipboard || WindowsNative.GetClipboardSequenceNumber() != sequence) return;
-                Trace("收到图 owner=" + owner + " " + content.PixelWidth + "x" + content.PixelHeight + " hash=" + (content.Fingerprint == null ? "null" : content.Fingerprint.Substring(0, 8)) + " 可覆盖=" + (clipboardPending != null));
-                if (!receipts.Accept(content.Fingerprint, CaptureSource.Clipboard, DateTime.UtcNow, ClipboardRepeat)) { Trace("→ 被3秒去重拦截"); return; }
+                if (!receipts.Accept(content.Fingerprint, CaptureSource.Clipboard, DateTime.UtcNow, ClipboardRepeat)) { return; }
                 if (content.Fingerprint != null && content.Fingerprint == clipboardLastFingerprint && DateTime.UtcNow - clipboardLastCommitAt < TimeSpan.FromSeconds(60))
                 {
-                    Trace("→ 与刚保存的内容完全相同（截图工具退出时重写剪贴板），跳过");
                     return;
                 }
                 bool staged = false;
                 try { staged = StageEditedClipboard(picture, content, owner); }
-                catch (Exception error) { gallery.Store.Log(error); Trace("→ 暂存判定异常，按新图处理"); }
+                catch (Exception error) { gallery.Store.Log(error); }
                 if (staged) return;
                 if (clipboardStaged != null) await CommitStagedClipboard();
                 if (disposed) return;
@@ -393,45 +390,30 @@ namespace ScreenLine
                 pending = gallery.Items.LastOrDefault(item => File.Exists(item.Path)) ?? gallery.Collected.LastOrDefault(item => File.Exists(item.Path));
                 clipboardPending = pending;
             }
-            if (pending == null) { Trace("→ 不暂存：没有可覆盖的上一张"); return false; }
+            if (pending == null) { return false; }
             // 截图工具活着时进程名能查到；退出时最后写一次剪贴板、进程随即销毁，所有者就是空的，同样算它。
-            if (!IsCaptureTool(owner) && owner.Length > 0) { Trace("→ 不暂存：所有者不是截图工具"); return false; }
+            if (!IsCaptureTool(owner) && owner.Length > 0) { return false; }
             // 十分钟窗口不能只看剪贴板提交时间：PrtSc 这类截图工具会先把文件落盘（文件夹监听先收到、
             // 剪贴板那路被配对去重拦下），从没有过剪贴板提交记录。窗口锚在图片入库的时刻上——
             // 剪贴板路径提交即写新文件，两者一致；文件路径就是截图落盘时间。取两者较新者兜底。
             DateTime anchored = clipboardLastCommitAt > File.GetCreationTimeUtc(pending.Path)
                 ? clipboardLastCommitAt : File.GetCreationTimeUtc(pending.Path);
-            if (DateTime.UtcNow - anchored > TimeSpan.FromMinutes(10)) { Trace("→ 不暂存：这张图已经放上超过10分钟"); return false; }
+            if (DateTime.UtcNow - anchored > TimeSpan.FromMinutes(10)) { return false; }
             bool sameSize = content.PixelWidth == pending.Image.PixelWidth && content.PixelHeight == pending.Image.PixelHeight;
             double difference;
             if (sameSize) difference = ImageContent.Difference(pending.Image, content);
             else
             {
                 // 截图工具编辑器会给画布补空白，尺寸小幅变化仍算同一张图的下一版。
-                if (!File.Exists(pending.Path)) { Trace("→ 不暂存：上一张文件已不在"); return false; }
+                if (!File.Exists(pending.Path)) { return false; }
                 difference = ImageContent.DifferenceAcrossSizes(pending.Path, pending.Image.PixelWidth, picture.Bytes, content.PixelWidth);
-                Trace("→ 尺寸 " + pending.Image.PixelWidth + "x" + pending.Image.PixelHeight + " → " + content.PixelWidth + "x" + content.PixelHeight + "，对齐比较差异 " + difference.ToString("F2"));
             }
-            if (difference > ClipboardEditTolerance) { Trace("→ 不暂存：画面差异 " + difference.ToString("F2")); return false; }
-            Trace("→ 暂存，等剪贴板安静后覆盖");
+            if (difference > ClipboardEditTolerance) { return false; }
             clipboardStaged = content;
             clipboardStagedBytes = picture.Bytes;
             clipboardStagedExtension = picture.Extension;
             clipboardStagedAt = DateTime.UtcNow;
             return true;
-        }
-
-        void Trace(string message)
-        {
-            try
-            {
-                string file = Path.Combine(Path.GetDirectoryName(gallery.Store.Inbox), "clipboard-trace.log");
-                // 诊断日志超过 1MB 直接重写：它只是排查用的时间线，历史价值有限。
-                var info = new FileInfo(file);
-                if (info.Exists && info.Length > 1024 * 1024) info.Delete();
-                File.AppendAllText(file, DateTime.Now.ToString("HH:mm:ss.fff") + "  " + message + Environment.NewLine);
-            }
-            catch { /* 诊断日志失败不影响收集 */ }
         }
 
         // 把暂存的修改版本写成文件，顶替绳上（或篮子里）那张原图，位置保持不变。
@@ -456,7 +438,6 @@ namespace ScreenLine
                 clipboardPending = current;
                 clipboardLastFingerprint = staged.Fingerprint;
                 clipboardLastCommitAt = DateTime.UtcNow;
-                Trace("→ 已覆盖：新文件 " + Path.GetFileName(path) + "，旧文件已删除");
                 if (!FileRules.SameFile(replaced, path))
                 {
                     try { File.Delete(replaced); }

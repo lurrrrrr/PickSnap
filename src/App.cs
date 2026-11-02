@@ -332,10 +332,10 @@ namespace ScreenLine
                     Gallery.Store.State.LastUpdateNotification = availableUpdate.Version; Gallery.Store.Save();
                 }
             }
-            catch (Exception)
+            catch (Exception error)
             {
-                // 统一归为「连接失败」，不给用户技术术语；网络恢复后再试即可。
-                if (!disposed && manual) Notice("暂时无法连接 GitHub 检查更新，请稍后重试。", 2, true);
+                // 手动检查失败：小窗说明具体原因（超时/限流/其他），并给直接打开下载页的入口；自动检查保持静默。
+                if (!disposed && manual) UpdateWindow.ShowCheckFailed(error);
             }
             finally
             {
