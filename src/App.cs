@@ -19,9 +19,9 @@ using Forms = System.Windows.Forms;
 [assembly: AssemblyTitle("PickSnap · 拾帧")]
 [assembly: AssemblyProduct("PickSnap")]
 [assembly: AssemblyDescription("拾帧：把截图挂在屏幕上沿，随手复制、拖拽和保存。")]
-[assembly: AssemblyVersion("1.0.1.0")]
-[assembly: AssemblyFileVersion("1.0.1.0")]
-[assembly: AssemblyInformationalVersion("1.0.1")]
+[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
+[assembly: AssemblyInformationalVersion("1.1.0")]
 
 namespace ScreenLine
 {
@@ -89,6 +89,8 @@ namespace ScreenLine
             Shelf = new ShelfWindow(Gallery, Act, EnableClipboard);
             Shelf.BasketRequested += ShowBasket;
             Shelf.TextRequested += ShowTexts;
+            // 绳子换屏重排时会把自己置顶，篮子跟着提回来，避免被压在下面点不动。
+            Shelf.RopeMoved += delegate { if (Basket != null) Basket.BringToFront(); };
             Texts.Changed += Shelf.UpdateTexts;
             events = new WindowsEvents();
             events.RegisterCapture(store.State.CaptureModifiers, store.State.CaptureKey);
@@ -126,10 +128,12 @@ namespace ScreenLine
                 textClipboardVersion++;
                 textClipboardSequence = WindowsNative.GetClipboardSequenceNumber();
                 Texts.CollectClipboard = value;
+                // 信封图标跟着这个开关显示或收起，需要立刻让绳子重排右端空间。
+                Shelf.UpdateTexts();
             });
             TrayMenu.OnAction(TrayMenu.AppearanceButton, ShowAppearance);
             var more = TrayMenu.MoreMenu;            MenuItem previewToggle = null;
-            previewToggle = more.AddAction("悬停放大预览", "picture", delegate
+            previewToggle = more.AddAction("悬停放大预览", "zoom", delegate
             {
                 bool previous = store.State.HoverPreview;
                 store.State.HoverPreview = previewToggle.IsChecked;
@@ -139,6 +143,19 @@ namespace ScreenLine
             previewToggle.IsCheckable = true;
             previewToggle.IsChecked = store.State.HoverPreview;
             previewToggle.ToolTip = "开启后，鼠标停在绳子上的图片会浮出一块放大预览";
+            // 顶部悬停展开：关闭后光标碰到屏幕顶边不再自动把绳子滑下来，避免误触；
+            // 截图到达、编辑返回这些主动展示不受影响。
+            MenuItem revealToggle = null;
+            revealToggle = more.AddAction("鼠标移至顶部时展开", "reveal", delegate
+            {
+                bool previous = store.State.NoHoverReveal;
+                store.State.NoHoverReveal = !revealToggle.IsChecked;
+                try { store.Save(); }
+                catch (Exception error) { store.State.NoHoverReveal = previous; revealToggle.IsChecked = !previous; store.Log(error); Notice("设置保存失败"); }
+            });
+            revealToggle.IsCheckable = true;
+            revealToggle.IsChecked = !store.State.NoHoverReveal;
+            revealToggle.ToolTip = "关闭后鼠标移到屏幕顶部不再自动展开，仍可用 Ctrl+Alt+T 或托盘图标显示挂绳";
             shortcutItem = more.AddAction("截图快捷键", "shortcut", delegate
             {
                 if (ShortcutSettings != null) { ShortcutSettings.Activate(); return; }
@@ -175,12 +192,15 @@ namespace ScreenLine
             });
             startup.IsCheckable = true;
             using (var key = Registry.CurrentUser.OpenSubKey(RunKey)) startup.IsChecked = key != null && key.GetValue("PickSnap") != null;
-            more.AddAction("在桌面创建快捷方式", "show", delegate
+            more.AddAction("在桌面创建快捷方式", "desktopplus", delegate
             {
                 try { Notice(DesktopController.CreateDesktopShortcut() ? "已在桌面创建「PickSnap」快捷方式" : "快捷方式创建失败，请检查桌面目录权限"); }
                 catch (Exception error) { store.Log(error); Notice("快捷方式创建失败：" + error.Message); }
             });
             updateMenu = more.AddAction("检查更新", "refresh", async delegate { await CheckForUpdates(true); });
+            more.Separator();
+            // 卸载入口也放进托盘：用户不必先去「设置 → 应用」里翻，脚本自己会确认并停掉程序。
+            more.AddAction("卸载软件", "uninstall", Uninstall);
             updateTimer.Tick += async delegate { updateTimer.Interval = TimeSpan.FromHours(12); await CheckForUpdates(false); };
             tray.BalloonTipClicked += delegate { ShowUpdate(); };
             TrayMenu.OnAction(TrayMenu.ExitButton, Exit);
@@ -195,12 +215,32 @@ namespace ScreenLine
             Application.Current.Shutdown();
         }
 
+        // 卸载：交给安装目录里的 uninstall.ps1，确认、停程序、保留或删除数据的判断都在脚本里，
+        // 这里只负责把它拉起来——窗口用隐藏方式启动，用户看到的是脚本自己的对话框。
+        void Uninstall()
+        {
+            string script = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "uninstall.ps1");
+            if (!File.Exists(script)) { Notice("这台机器上找不到卸载程序，请重新运行安装包", 2, true); return; }
+            try
+            {
+                Process.Start(new ProcessStartInfo("powershell.exe")
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                    Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + "\""
+                });
+            }
+            catch (Exception error) { Gallery.Store.Log(error); Notice("无法启动卸载程序：" + error.Message, 2, true); }
+        }
+
         public async Task Start()
         {
             Shelf.Show();
             Shelf.Reveal(true, false, 4);
             await Captures.Start();
             RunAutoPurge(false);
+            AppUpdates.ClearStaleCache();
             if (automaticUpdates) updateTimer.Start();
         }
 
@@ -389,6 +429,9 @@ namespace ScreenLine
         internal void ShowTexts()
         {
             if (TextWindow != null) { TextWindow.Close(); return; }
+            // 收集关着且一条文字都没有时信封根本不摆出来（绳子右端没有锚点），
+            // 硬开窗只会得到一块马上要自毁的空面板；轻提示一句就够。
+            if (Texts.Items.Count == 0 && !Texts.CollectClipboard) { Notice("文字信封是空的：在托盘「剪贴板收集」中开启「文字」后才会收集", 2, true); return; }
             Shelf.Reveal(true, false, 0);
             Shelf.ChoosingTexts = true;
             TextWindow = new TextWindow(Texts, Shelf);
@@ -436,6 +479,8 @@ namespace ScreenLine
 
         void Notice(string message) { Notice(message, 2, false); }
 
+        void Notice(string message, int seconds) { Notice(message, seconds, false); }
+
         void Notice(string message, int seconds, bool plain)
         {
             if (notice != null) notice.Close();
@@ -467,6 +512,37 @@ namespace ScreenLine
                             || action == ShotAction.RemoveOthers && position != index).ToArray();
                         Gallery.RemoveMany(targets);
                         break;
+                    case ShotAction.TrashLeft:
+                    case ShotAction.TrashRight:
+                    case ShotAction.TrashOthers:
+                    case ShotAction.TrashAll:
+                        {
+                            // 批量删除与批量放进篮子选的是同一批图，区别只在收尾：这里进回收站。
+                            // 逐张删并在中间留出间隔：连续调用回收站删除时 shell 会忙不过来抛
+                            // 「操作已取消」，不留间隔的话删掉一两张就整个中断，看起来像没生效。
+                            var onRope = Shelf.HangingItems();
+                            int at = Array.IndexOf(onRope, item);
+                            if (at < 0) break;
+                            var doomed = onRope.Where((image, position) => action == ShotAction.TrashAll
+                                || action == ShotAction.TrashLeft && position < at
+                                || action == ShotAction.TrashRight && position > at
+                                || action == ShotAction.TrashOthers && position != at).ToArray();
+                            int done = 0, failed = 0;
+                            foreach (var target in doomed)
+                            {
+                                if (!File.Exists(target.Path)) continue;
+                                if (TrashOne(target)) { done++; await Task.Delay(60); continue; }
+                                // 刚忙完上一张，等一下再试一次；仍然失败就跳过，不中断整批。
+                                await Task.Delay(200);
+                                if (TrashOne(target)) done++; else failed++;
+                                await Task.Delay(60);
+                            }
+                            Gallery.Prune();
+                            if (failed > 0) Notice("已把 " + done + " 张送进回收站，" + failed + " 张没能删除", 5);
+                            // 成功提示只停 2 秒：结果一眼能确认，不必赖在屏幕角落。
+                            else if (done > 0) Notice("已把 " + done + " 张送进回收站");
+                            break;
+                        }
                     case ShotAction.Copy:
                         var payload = new DataObject();
                         byte[] png;
@@ -526,17 +602,30 @@ namespace ScreenLine
                         Gallery.Remove(item);
                         break;
                     case ShotAction.Trash:
-                        if (FileRules.IsInside(item.Path, Gallery.Store.Inbox))
-                        {
-                            FileSystem.DeleteFile(item.Path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
-                            Shelf.ShowDiscard(item);
-                            Gallery.Prune();
-                        }
-                        else { Shelf.ShowDiscard(item); Gallery.Forget(item); }
+                        // 单张失败也要说一声，否则文件还在、记录却不在绳上会让人困惑。
+                        if (!TrashOne(item)) Notice("这一张没能送进回收站", 4);
                         break;
                 }
             }
             catch (Exception error) { Gallery.Store.Log(error); Notice("操作未完成：" + error.Message); }
+        }
+
+        // 单张删除与批量删除共用：收集副本进回收站，外部原图只移除记录、文件留在原处。
+        // 返回是否成功；失败只记日志、不往外抛，批量删除靠它决定要不要继续下一张。
+        bool TrashOne(CaptureItem target)
+        {
+            try
+            {
+                if (FileRules.IsInside(target.Path, Gallery.Store.Inbox))
+                {
+                    FileSystem.DeleteFile(target.Path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+                    Shelf.ShowDiscard(target);
+                    Gallery.Prune();
+                }
+                else { Shelf.ShowDiscard(target); Gallery.Forget(target); }
+                return true;
+            }
+            catch (Exception error) { Gallery.Store.Log(error); return false; }
         }
 
         public void Dispose()

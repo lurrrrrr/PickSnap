@@ -155,7 +155,7 @@ namespace ScreenLine
             Canvas.SetLeft(frame, x - width / 2); Canvas.SetTop(frame, top);
             turn.CenterX = width / 2; turn.CenterY = height / 2;
             turn.Angle = card.Tilt * (1 - ease) + Math.Sign(endX - startX) * 10 * Math.Sin(Math.PI * ease);
-            border.Background = Brushes.White; border.BorderThickness = new Thickness(1);
+            border.Background = LightTheme.Brush("#FFFFFF"); border.BorderThickness = new Thickness(1);
             border.CornerRadius = new CornerRadius(Math.Min(9, width * 0.09));
             photo.Margin = new Thickness(Math.Min(6, width * 0.04));
             shadow.Opacity = 0.16 * (1 - ease); clip.Opacity = 0;

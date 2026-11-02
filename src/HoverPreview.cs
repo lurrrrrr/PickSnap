@@ -167,7 +167,7 @@ namespace ScreenLine
         readonly ScaleTransform entrance = new ScaleTransform(1, 1);
         readonly Image image = new Image { Stretch = Stretch.Uniform, Margin = new Thickness(28),
             Effect = new DropShadowEffect { Color = Colors.Black, BlurRadius = 32, ShadowDepth = 10, Direction = 270, Opacity = 0.8 } };
-        readonly Border error = new Border { Background = Brushes.White, CornerRadius = new CornerRadius(8),
+        readonly Border error = new Border { Background = LightTheme.Brush("#FFFFFF"), CornerRadius = new CornerRadius(8),
             Child = new TextBlock { Text = "图片暂时无法预览", Foreground = LightTheme.Brush("#65717F"), Margin = new Thickness(22, 18, 22, 18) } };
         readonly Grid body = new Grid();
         internal BitmapSource Picture { get { return image.Source as BitmapSource; } }

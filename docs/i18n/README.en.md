@@ -63,7 +63,7 @@ The line can hold far more than one screen: scroll horizontally with the wheel, 
 - Press and hold to annotate: box, arrow, freehand, text, crop, rotate — all processed locally
 - Scroll horizontally with the wheel, or use the arrows at both ends; dragging an image to either end keeps the line scrolling
 - Capacity is derived from screen width (24 images minimum); when it is full, the oldest image goes back to the basket
-- Right-click menu: open, edit, save a copy, open location, remove to basket
+- Right-click menu: open, edit, save a copy, open location, put into basket, batch put into basket, move to Recycle Bin, batch move to Recycle Bin — the basket only takes images off the line; only moving to the Recycle Bin deletes them
 
 **Pinned to the desktop**
 
@@ -71,7 +71,7 @@ Click the clip above an image (press and release) and it detaches from the line 
 
 **Image basket**
 
-Keep the screenshots you do not need right now here. Select by clicking or rubber-band, then hang a whole selection back on the line. To take an image off the line, drag it onto the basket icon at the right end, or straight into the basket window if it is open.
+Keep the screenshots you do not need right now here. Select by clicking or rubber-band, then hang a whole selection back on the line. To take an image off the line, drag it onto the basket icon at the right end, or straight into the basket window if it is open. Turn off image collection and the basket withdraws from the right end of the line (unless auto-hang is off, since new screenshots still land there); it stays reachable from the tray panel.
 
 ![Drag an image onto the basket on the right to take it off the line](../../docs/assets/drop-basket.gif)
 
@@ -79,7 +79,7 @@ Keep the screenshots you do not need right now here. Select by clicking or rubbe
 
 **Text envelope**
 
-Text you copy is collected automatically, with full-text search and one-click copy that preserves line breaks and indentation. After deleting, you have 5 seconds to click "Undo" and put it back. Only the most recent 100 entries are kept.
+Text you copy is collected automatically, with full-text search and one-click copy that preserves line breaks and indentation. After deleting, you have 5 seconds to click "Undo" and put it back. Only the most recent 100 entries are kept. Turn off text collection and the envelope withdraws from the right end; the content stays and remains reachable from the tray panel.
 
 <p align="center"><img src="../../docs/assets/text-window.png" width="330" alt="Text envelope: search box, collected text, copy and delete, with undo after delete"></p>
 
@@ -108,7 +108,7 @@ Five ropes (classic silver-grey, linen with wooden clips, porcelain, pastel, gra
 2. Extract it anywhere and double-click `Install.cmd`
 3. The installer puts the files in `%LOCALAPPDATA%\Programs\PickSnap`, creates a desktop shortcut and starts the app
 
-No administrator rights and no system services. To uninstall, remove it from Windows "Settings → Apps"; uninstalling also clears collected screenshots and settings.
+No administrator rights and no system services. There are three ways to uninstall: tray → "More → Uninstall", Windows "Settings → Apps", or run `uninstall.ps1` inside the install folder. Uninstalling removes the program only and **keeps your collected screenshots and settings** by default; the confirmation dialog also offers to delete them, with a second confirmation so images can't be lost by accident.
 
 You can also run it without `Install.cmd`: double-click `app\PickSnap.exe`. The first launch creates a desktop shortcut, and you can rebuild it any time from the tray under "More → Create desktop shortcut".
 
@@ -147,10 +147,11 @@ Source in `src\`, third-party components in `vendor\`, build and packaging scrip
 | Scale the pinned image | Scroll wheel |
 | Move the pinned image | Drag it |
 | Annotate | Press and hold the image, or right-click → "Edit" |
-| Remove to basket | Right-click → "Remove to basket", or drag onto the basket icon |
+| Put into basket | Right-click → "Put into basket", or drag onto the basket icon |
 | Open the image basket | Click the basket at the right end |
 | Open the text envelope | Click the envelope at the right end |
 | Choose a screen | Right-click the tray icon → "Display screen" |
+| Reveal when the mouse reaches the top | Tray → "More" → "Reveal when the mouse reaches the top" (on by default; when off, use `Ctrl+Alt+T` or the tray icon) |
 | Appearance, run at startup, check for updates | Right-click the tray icon |
 
 </details>
@@ -179,7 +180,7 @@ If "New images hang automatically" is off, new screenshots go to the image baske
 <details>
 <summary>What is the difference between "remove" and "delete"?</summary>
 
-"Remove to basket" only takes the image off the line — the file and its record stay, and you can hang it back any time. Delete moves the collected copy to the Recycle Bin; for original screenshots in the screenshots folder it only drops PickSnap's record and leaves the file untouched.
+"Put into basket" only takes the image off the line — the file and its record stay, and you can hang it back any time. Delete moves the collected copy to the Recycle Bin; for original screenshots in the screenshots folder it only drops PickSnap's record and leaves the file untouched.
 
 </details>
 

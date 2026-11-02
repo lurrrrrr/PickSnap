@@ -65,7 +65,7 @@ namespace ScreenLine
         // 当前框选手势造成的选中：矩形变动时据此实时反选，手势结束即清空。
         readonly HashSet<string> bandTouched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         readonly UniformGrid thumbnails = new UniformGrid { Columns = 3, VerticalAlignment = VerticalAlignment.Top };
-        readonly ScrollViewer scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        readonly ScrollViewer scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Tag = "nodrag", Cursor = Cursors.Arrow };
         readonly TextBlock empty = new TextBlock { TextAlignment = TextAlignment.Center, Foreground = LightTheme.Brush("#65717F"), FontSize = 14, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
         readonly TextBlock status = new TextBlock { FontSize = 14, Foreground = LightTheme.Brush("#283343"), VerticalAlignment = VerticalAlignment.Center };
         readonly Image preview = new Image { Stretch = Stretch.Uniform, Margin = new Thickness(18, 10, 18, 12) };
@@ -115,7 +115,10 @@ namespace ScreenLine
             var screen = WindowsNative.ScreenAtPointer();
             double dpi = WindowsNative.MonitorScale(screen);
             Width = Math.Min(1040, screen.WorkingArea.Width / dpi - 32);
-            Height = Math.Min(660, screen.WorkingArea.Height / dpi - 48);
+            // 窗口顶边要落在绳子（顶部 220 DIP 的置顶横带）下方：贴太近时标题栏会被绳子压住，
+            // 鼠标都被绳子接走，整窗看起来像"钉死"。屏幕矮时优先压缩高度，保证底部不越界。
+            double room = screen.WorkingArea.Height / dpi - 252;
+            Height = Math.Min(660, Math.Max(380, room));
             MinWidth = Math.Min(720, Width); MinHeight = Math.Min(420, Height);
 
             var body = new Grid();
@@ -161,9 +164,31 @@ namespace ScreenLine
             AutoHang = new CheckBox { VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand, ToolTip = "关闭后，新图片仍收进图片篮子" };
             AutoHang.Template = (ControlTemplate)XamlReader.Parse(LightTheme.Sheet(@"<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='CheckBox'>
               <Border x:Name='Track' Width='38' Height='22' CornerRadius='11' Background='#B8C0CC' BorderBrush='Transparent' BorderThickness='1'>
-                <Border x:Name='Knob' Width='16' Height='16' CornerRadius='8' Background='White' HorizontalAlignment='Left' Margin='2,0'/>
+                <Border x:Name='Knob' Width='16' Height='16' CornerRadius='8' Background='White' HorizontalAlignment='Left' Margin='2,0,2,0'/>
               </Border><ControlTemplate.Triggers>
-                <Trigger Property='IsChecked' Value='True'><Setter TargetName='Track' Property='Background' Value='#2463AE'/><Setter TargetName='Knob' Property='HorizontalAlignment' Value='Right'/></Trigger>
+                <!-- 与托盘开关同一套做法：滑块 130ms 缓出滑行 16px，切换不再瞬间跳位。 -->
+                <Trigger Property='IsChecked' Value='True'>
+                  <Setter TargetName='Track' Property='Background' Value='#2463AE'/>
+                  <Setter TargetName='Knob' Property='Margin' Value='18,0,2,0'/>
+                  <Trigger.EnterActions>
+                    <BeginStoryboard>
+                      <Storyboard>
+                        <ThicknessAnimation Storyboard.TargetName='Knob' Storyboard.TargetProperty='Margin' From='2,0,2,0' To='18,0,2,0' Duration='0:0:0.13'>
+                          <ThicknessAnimation.EasingFunction><CubicEase EasingMode='EaseOut'/></ThicknessAnimation.EasingFunction>
+                        </ThicknessAnimation>
+                      </Storyboard>
+                    </BeginStoryboard>
+                  </Trigger.EnterActions>
+                  <Trigger.ExitActions>
+                    <BeginStoryboard>
+                      <Storyboard>
+                        <ThicknessAnimation Storyboard.TargetName='Knob' Storyboard.TargetProperty='Margin' To='2,0,2,0' Duration='0:0:0.13'>
+                          <ThicknessAnimation.EasingFunction><CubicEase EasingMode='EaseOut'/></ThicknessAnimation.EasingFunction>
+                        </ThicknessAnimation>
+                      </Storyboard>
+                    </BeginStoryboard>
+                  </Trigger.ExitActions>
+                </Trigger>
               </ControlTemplate.Triggers></ControlTemplate>"));
             AutomationProperties.SetName(AutoHang, "新图片自动上绳");
             AutoHang.Checked += AutoChanged; AutoHang.Unchecked += AutoChanged;
@@ -187,7 +212,6 @@ namespace ScreenLine
             var close = LightTheme.Button("", Close, "quiet"); close.Content = LightTheme.CloseIcon();
             close.Width = close.Height = 28; close.MinWidth = 0; close.Padding = new Thickness(0); close.Margin = new Thickness(22, 0, 0, 0);
             AutomationProperties.SetName(close, "关闭图片篮子"); tools.Children.Add(close); Grid.SetColumn(tools, 1); heading.Children.Add(tools);
-            heading.MouseLeftButtonDown += delegate(object sender, MouseButtonEventArgs e) { if (e.OriginalSource is TextBlock) DragMove(); };
             body.Children.Add(new Border { BorderBrush = LightTheme.Brush("#E8EBEF"), BorderThickness = new Thickness(0, 0, 0, 1), Child = heading });
 
             var tabs = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
@@ -288,7 +312,7 @@ namespace ScreenLine
             Grid.SetColumn(right, 1); content.Children.Add(right);
             Grid.SetRow(content, 2); body.Children.Add(content);
 
-            var footer = new Grid { Margin = new Thickness(24, 0, 24, 0) };
+            var footer = new Grid { Margin = new Thickness(24, 0, 36, 0) };
             footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             footer.ColumnDefinitions.Add(new ColumnDefinition());
             footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -316,12 +340,52 @@ namespace ScreenLine
             foreach (var button in new[] { SelectAllButton, DeleteButton, HangButton }) button.FontSize = 14;
             var bottom = new Border { BorderBrush = LightTheme.Brush("#E8EBEF"), BorderThickness = new Thickness(0, 1, 0, 0), Child = footer };
             Grid.SetRow(bottom, 3); body.Children.Add(bottom);
+            // 右下角缩放手柄：无边框窗口没有系统边框可拖，想放大看图就只能靠这个角。
+            var grip = new Border
+            {
+                Width = 26, Height = 26, Background = Brushes.Transparent, Cursor = Cursors.SizeNWSE,
+                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom,
+                ToolTip = "拖动调整窗口大小"
+            };
+            grip.Child = new System.Windows.Shapes.Path
+            {
+                Data = Geometry.Parse("M9,21 L21,9 M15,21 L21,15"),
+                Stroke = LightTheme.Brush("#C3CCD8"), StrokeThickness = 1.4,
+                StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round,
+                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(0, 0, 5, 5)
+            };
+            bool resizing = false;
+            double resizeFromX = 0, resizeFromY = 0, resizeStartWidth = 0, resizeStartHeight = 0;
+            double maxWidth = screen.WorkingArea.Width / dpi - 16, maxHeight = screen.WorkingArea.Height / dpi - 16;
+            grip.MouseLeftButtonDown += delegate(object sender, MouseButtonEventArgs e)
+            {
+                var from = WindowsNative.Cursor();
+                resizing = true; resizeFromX = from.X; resizeFromY = from.Y;
+                resizeStartWidth = Width; resizeStartHeight = Height;
+                grip.CaptureMouse(); e.Handled = true;
+            };
+            grip.MouseMove += delegate(object sender, MouseEventArgs e)
+            {
+                if (!resizing) return;
+                var now = WindowsNative.Cursor();
+                Width = Math.Max(MinWidth, Math.Min(maxWidth, resizeStartWidth + (now.X - resizeFromX) / dpi));
+                Height = Math.Max(MinHeight, Math.Min(maxHeight, resizeStartHeight + (now.Y - resizeFromY) / dpi));
+            };
+            grip.MouseLeftButtonUp += delegate(object sender, MouseButtonEventArgs e) { resizing = false; grip.ReleaseMouseCapture(); e.Handled = true; };
+            Grid.SetRow(grip, 3); body.Children.Add(grip);
             SourceInitialized += delegate
             {
+                var handle = new WindowInteropHelper(this).Handle;
                 int width = (int)Math.Round(Width * dpi), height = (int)Math.Round(Height * dpi);
-                WindowsNative.SetWindowPos(new WindowInteropHelper(this).Handle, IntPtr.Zero,
-                    screen.WorkingArea.Left + (screen.WorkingArea.Width - width) / 2,
-                    screen.WorkingArea.Top + Math.Min((int)(190 * dpi), Math.Max(16, (screen.WorkingArea.Height - height) / 2)), width, height, 0x14);
+                int gap = (int)Math.Round(16 * dpi), ropeBottom = (int)Math.Round(220 * dpi);
+                // 顶边尽量落在绳子下方 16px；屏幕不够高时上移，但不能进入绳子那一条。
+                int top = screen.WorkingArea.Top + Math.Min(ropeBottom + gap,
+                    Math.Max(gap, screen.WorkingArea.Height - height - gap));
+                // HWND_TOPMOST 显式放到置顶组最前：绳子窗口也是置顶的，只 Show 不改 z 序时
+                // 篮子可能被绳子压住——能看见，但点哪里都被绳子接走，只有露在外面的「×」有反应。
+                WindowsNative.SetWindowPos(handle, new IntPtr(-1),
+                    screen.WorkingArea.Left + (screen.WorkingArea.Width - width) / 2, top, width, height, 0x10);
             };
             PreviewKeyDown += delegate(object sender, KeyEventArgs e)
             {
@@ -330,11 +394,84 @@ namespace ScreenLine
                 {
                     SelectAll(); e.Handled = true; return;
                 }
+                // 选中之后不用去摸底部按钮：Delete 删除、Enter 挂上绳子。
+                if (e.Key == Key.Delete && selected.Count > 0) { DeleteSelected(); e.Handled = true; return; }
+                if (e.Key == Key.Enter && selected.Count > 0) { Mount(); e.Handled = true; return; }
                 if (e.Key == Key.Escape) Close();
+            };
+            // 拖动区不再只有标题那一条：整块面板上凡是"没有交互含义"的地方都能拖走——
+            // 标题、标签行两侧、预览区、按钮之间的缝隙、四周的留白都算。
+            // 两种情况例外：缩略图区（那片空白要用来框选），以及按钮/开关/滚动条（它们自己吃左键）。
+            // 另外只有真的拖起来（超过 4px）才移动窗口，单击、双击打开原图都不受影响。
+            Point? dragFrom = null;
+            MouseLeftButtonDown += delegate(object sender, MouseButtonEventArgs e)
+            {
+                if (Draggable(e.OriginalSource)) dragFrom = e.GetPosition(this);
+            };
+            MouseMove += delegate(object sender, MouseEventArgs e)
+            {
+                if (e.LeftButton != MouseButtonState.Pressed)
+                {
+                    dragFrom = null;
+                    // 悬停光标即提示：四向箭头的地方能拖着窗口走，普通箭头的地方是内容区。
+                    Cursor = Draggable(e.OriginalSource) ? Cursors.SizeAll : null;
+                    return;
+                }
+                if (dragFrom == null) return;
+                Point now = e.GetPosition(this);
+                if (Math.Abs(now.X - dragFrom.Value.X) < 4 && Math.Abs(now.Y - dragFrom.Value.Y) < 4) return;
+                dragFrom = null;
+                try { DragMove(); }
+                catch (InvalidOperationException) { }
+            };
+            MouseLeftButtonUp += delegate { dragFrom = null; };
+            // 点面板以外的地方（别的程序、桌面）就收起，不用非去找右上角的 ×。
+            Deactivated += delegate
+            {
+                var settle = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(220) };
+                settle.Tick += delegate
+                {
+                    settle.Stop();
+                    if (closed || IsActive || !IsVisible) return;
+                    // 左键还按着：多半是从绳子往面板里拖图，拖放期间窗口会短暂失活，不能关。
+                    if ((WindowsNative.GetAsyncKeyState(0x01) & 0x8000) != 0) return;
+                    Point origin = PointToScreen(new Point(0, 0));
+                    Point corner = PointToScreen(new Point(ActualWidth, ActualHeight));
+                    var cursor = WindowsNative.Cursor();
+                    if (cursor.X >= origin.X && cursor.X <= corner.X && cursor.Y >= origin.Y && cursor.Y <= corner.Y) return;
+                    Close();
+                };
+                settle.Start();
             };
             gallery.Changed += GalleryChanged;
             Closed += delegate { closed = true; gallery.Changed -= GalleryChanged; previewVersion++; preview.Source = null; foreach (var image in pictures.Values) image.Source = null; pictures.Clear(); visiblePictures.Clear(); };
             Refresh();
+        }
+
+        // 绳子重新排布后会把自己提到置顶组最前，篮子要跟着提回来，
+        // 否则又会被压在绳子下面：看得见、点不动。
+        internal void BringToFront()
+        {
+            var handle = new WindowInteropHelper(this).Handle;
+            if (handle != IntPtr.Zero)
+                WindowsNative.SetWindowPos(handle, new IntPtr(-1), 0, 0, 0, 0, 0x13);
+        }
+
+        // 面板上"可以拖着走"的地方：祖先链上没有按钮、开关、滚动条，也不在缩略图区
+        // 或预览区（Tag='nodrag'）里，都算拖动区；四周留白、标签行两侧、按钮缝隙都包含在内。
+        bool Draggable(object source)
+        {
+            var node = source as DependencyObject;
+            while (node != null && node != this)
+            {
+                if (node is ButtonBase || node is ScrollBar || node is TextBoxBase) return false;
+                var element = node as FrameworkElement;
+                if (element != null && "nodrag".Equals(element.Tag as string, StringComparison.Ordinal)) return false;
+                node = node is Visual || node is System.Windows.Media.Media3D.Visual3D
+                    ? VisualTreeHelper.GetParent(node)
+                    : LogicalTreeHelper.GetParent(node);
+            }
+            return true;
         }
 
         void AutoChanged(object sender, RoutedEventArgs e)

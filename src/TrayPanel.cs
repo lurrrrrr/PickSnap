@@ -65,12 +65,36 @@ namespace ScreenLine
           <Grid.ColumnDefinitions><ColumnDefinition Width='*'/><ColumnDefinition Width='32'/></Grid.ColumnDefinitions>
           <ContentPresenter VerticalAlignment='Center'/>
           <Border x:Name='Track' Grid.Column='1' Width='32' Height='18' Background='#B8C2D0' BorderBrush='#B8C2D0' BorderThickness='1' CornerRadius='9' VerticalAlignment='Center'>
-            <Ellipse x:Name='Thumb' Width='14' Height='14' Fill='White' HorizontalAlignment='Left' Margin='2,0'/>
+            <Ellipse x:Name='Thumb' Width='14' Height='14' Fill='White' HorizontalAlignment='Left' Margin='2,0,2,0'/>
           </Border>
         </Grid>
       </Border>
       <ControlTemplate.Triggers>
-        <Trigger Property='IsChecked' Value='True'><Setter TargetName='Track' Property='Background' Value='#2463AE'/><Setter TargetName='Track' Property='BorderBrush' Value='#2463AE'/><Setter TargetName='Thumb' Property='HorizontalAlignment' Value='Right'/></Trigger>
+        <!-- 滑块用 Margin 动画滑过去（圆点走 12px，130ms 缓出），开关切换不再是硬跳；
+             Setter 保证「加载时就是选中」的开关立刻显示在右端，动画只负责之后的切换。 -->
+        <Trigger Property='IsChecked' Value='True'>
+          <Setter TargetName='Track' Property='Background' Value='#2463AE'/>
+          <Setter TargetName='Track' Property='BorderBrush' Value='#2463AE'/>
+          <Setter TargetName='Thumb' Property='Margin' Value='14,0,2,0'/>
+          <Trigger.EnterActions>
+            <BeginStoryboard>
+              <Storyboard>
+                <ThicknessAnimation Storyboard.TargetName='Thumb' Storyboard.TargetProperty='Margin' From='2,0,2,0' To='14,0,2,0' Duration='0:0:0.13'>
+                  <ThicknessAnimation.EasingFunction><CubicEase EasingMode='EaseOut'/></ThicknessAnimation.EasingFunction>
+                </ThicknessAnimation>
+              </Storyboard>
+            </BeginStoryboard>
+          </Trigger.EnterActions>
+          <Trigger.ExitActions>
+            <BeginStoryboard>
+              <Storyboard>
+                <ThicknessAnimation Storyboard.TargetName='Thumb' Storyboard.TargetProperty='Margin' To='2,0,2,0' Duration='0:0:0.13'>
+                  <ThicknessAnimation.EasingFunction><CubicEase EasingMode='EaseOut'/></ThicknessAnimation.EasingFunction>
+                </ThicknessAnimation>
+              </Storyboard>
+            </BeginStoryboard>
+          </Trigger.ExitActions>
+        </Trigger>
         <Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Surface' Property='Background' Value='#DFE6EE'/></Trigger>
         <Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Surface' Property='BorderBrush' Value='#6E97CB'/></Trigger>
       </ControlTemplate.Triggers>
@@ -90,12 +114,23 @@ namespace ScreenLine
         LightMenu pendingMenu;
         DateTime pendingSince;
         DateTime? awaySince, subAwaySince;
+        // 快捷键提示（Ctrl+Alt+T）不用原生 ToolTip：面板是弹窗、会捕获鼠标，
+        // 关闭 tooltip 用的 MouseLeave 在捕获期间收不到，提示会赖着不走。
+        // 改成自绘 Popup，由下方 WatchTick 轮询驱动：悬停约 0.4s 弹出，移开立即消失。
+        readonly Popup tipPopup;
+        readonly TextBlock tipText = new TextBlock { FontSize = 11, Foreground = LightTheme.Brush("#283343") };
+        readonly DispatcherTimer tipDelay = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(420) };
 
         internal TrayPanel()
         {
             Width = 324; FontFamily = LightTheme.UiFont; FontSize = 12;
             Foreground = LightTheme.Brush("#283343"); HasDropShadow = false; SnapsToDevicePixels = true;
             TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
+            tipDelay.Tick += delegate
+            {
+                tipDelay.Stop();
+                if (IsOpen && Contains(VisibilityButton, WindowsNative.Cursor())) tipPopup.IsOpen = true;
+            };
             // 入场动效：淡入并从托盘方向轻微下沉归位，替代生硬的瞬显。
             var entrance = new TranslateTransform();
             RenderTransform = entrance;
@@ -131,6 +166,17 @@ namespace ScreenLine
                 Grid.SetColumn(quicks[i], i); quickRow.Children.Add(quicks[i]);
             }
             panel.Children.Add(quickRow);
+            var tipBorder = new Border
+            {
+                Background = LightTheme.Brush("#FFFFFF"), BorderBrush = LightTheme.Brush("#E0E4EA"),
+                BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(10, 5, 10, 5), Child = tipText, IsHitTestVisible = false
+            };
+            tipPopup = new Popup
+            {
+                AllowsTransparency = true, PlacementTarget = VisibilityButton, Placement = PlacementMode.Bottom,
+                VerticalOffset = 4, StaysOpen = true, IsHitTestVisible = false, Child = tipBorder
+            };
             panel.Children.Add(Divider());
             ScreenButton = Action("显示屏幕", "monitor"); ScreenButton.Height = 34;
             var screenArrow = Icon("chevron", false); screenArrow.Width = 13; screenArrow.Height = 13; screenArrow.HorizontalAlignment = HorizontalAlignment.Right;
@@ -141,7 +187,7 @@ namespace ScreenLine
             Pictures = Toggle("收集图片", "picture", "收集剪贴板图片"); panel.Children.Add(Pictures);
             Text = Toggle("收集文字", "text", "收集剪贴板文字"); panel.Children.Add(Text);
             panel.Children.Add(Divider());
-            AutoHang = Toggle("新图片自动上绳", "show", "新图片自动上绳"); panel.Children.Add(AutoHang);
+            AutoHang = Toggle("新图片自动上绳", "autohang", "新图片自动上绳"); panel.Children.Add(AutoHang);
             MoreButton = Action("更多操作", "more");
             var arrow = Icon("chevron", false); arrow.Width = 13; arrow.Height = 13; arrow.HorizontalAlignment = HorizontalAlignment.Right;
             ((Grid)MoreButton.Content).Children.Add(arrow); panel.Children.Add(MoreButton);
@@ -151,10 +197,10 @@ namespace ScreenLine
             var surface = new FrameworkElementFactory(typeof(Border));
             surface.SetValue(Border.MarginProperty, new Thickness(12));
             surface.SetValue(Border.CornerRadiusProperty, new CornerRadius(14));
-            surface.SetValue(Border.BackgroundProperty, Brushes.White);
+            surface.SetValue(Border.BackgroundProperty, LightTheme.Brush("#FFFFFF"));
             surface.SetValue(Border.BorderBrushProperty, LightTheme.Brush("#E0E4EA"));
             surface.SetValue(Border.BorderThicknessProperty, new Thickness(1));
-            surface.SetValue(Border.EffectProperty, new System.Windows.Media.Effects.DropShadowEffect { Color = Color.FromRgb(38, 57, 76), BlurRadius = 22, ShadowDepth = 6, Opacity = .16 });
+            surface.SetValue(Border.EffectProperty, new System.Windows.Media.Effects.DropShadowEffect { Color = LightTheme.ShadowColor, BlurRadius = 22, ShadowDepth = 6, Opacity = LightTheme.Dark ? .34 : .16 });
             var content = new FrameworkElementFactory(typeof(ContentPresenter));
             Items.Add(panel);
             content.SetBinding(ContentPresenter.ContentProperty, new Binding("Items[0]") { RelativeSource = RelativeSource.TemplatedParent }); surface.AppendChild(content);
@@ -187,7 +233,7 @@ namespace ScreenLine
             };
             Closed += delegate
             {
-                watch.Stop();
+                watch.Stop(); tipDelay.Stop(); tipPopup.IsOpen = false;
                 awaySince = subAwaySince = null; pendingMenu = null;
                 MoreButton.Tag = null; ScreenButton.Tag = null;
                 MoreMenu.IsOpen = false; ScreenMenu.IsOpen = false;
@@ -209,8 +255,12 @@ namespace ScreenLine
             button.Click += delegate { Close(); action(); };
         }
 
-        // 主快捷键提示（Ctrl+Alt+T）挂在「显示绳子」格的 ToolTip 上。
-        internal void SetShortcutTip(string tip) { VisibilityButton.ToolTip = tip; }
+        // 主快捷键提示（Ctrl+Alt+T）：文案写进自绘 tipText，由轮询弹出/收起（见 WatchTick）。
+        internal void SetShortcutTip(string tip)
+        {
+            tipText.Text = tip;
+            AutomationProperties.SetHelpText(VisibilityButton, tip);
+        }
 
         internal void OnToggle(CheckBox toggle, bool initial, Action<bool> changed)
         {
@@ -226,7 +276,7 @@ namespace ScreenLine
             AutomationProperties.SetItemStatus(ScreenButton, ScreenMode.Text);
             while (ScreenMenu.Items.Count > 1) ScreenMenu.Items.RemoveAt(1);
             ScreenMenu.SetDetails(screens.Length + " 块已连接");
-            var follow = ScreenMenu.AddAction("跟随鼠标", "show", delegate { choose(null); });
+            var follow = ScreenMenu.AddAction("跟随鼠标", "crosshair", delegate { choose(null); });
             follow.IsCheckable = true; follow.IsChecked = string.IsNullOrEmpty(selected);
             ScreenMenu.Separator();
             for (int i = 0; i < screens.Length; i++)
@@ -275,6 +325,15 @@ namespace ScreenLine
         {
             if (!IsOpen) { watch.Stop(); return; }
             WindowsNative.Point cursor = WindowsNative.Cursor();
+            // 快捷键提示：光标落在「显示绳子」格上延迟弹出，移开立即收起。
+            if (Contains(VisibilityButton, cursor))
+            {
+                if (!tipPopup.IsOpen && !tipDelay.IsEnabled) tipDelay.Start();
+            }
+            else
+            {
+                tipDelay.Stop(); tipPopup.IsOpen = false;
+            }
             bool overPanel = Contains(this, cursor);
             bool overMore = MoreMenu.IsOpen && Contains(MoreMenu, cursor);
             bool overScreen = ScreenMenu.IsOpen && Contains(ScreenMenu, cursor);

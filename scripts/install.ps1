@@ -23,8 +23,13 @@ New-ItemProperty -Path $uninstallKey -Name DisplayName -Value 'PickSnap · 拾�
 New-ItemProperty -Path $uninstallKey -Name DisplayVersion -Value ([Diagnostics.FileVersionInfo]::GetVersionInfo($exePath).ProductVersion) -PropertyType String -Force | Out-Null
 New-ItemProperty -Path $uninstallKey -Name InstallLocation -Value $installPath -PropertyType String -Force | Out-Null
 New-ItemProperty -Path $uninstallKey -Name DisplayIcon -Value ($exePath + ',0') -PropertyType String -Force | Out-Null
-$uninstallCommand = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $installPath 'uninstall.ps1') + '"'
+New-ItemProperty -Path $uninstallKey -Name Publisher -Value 'lurrrrrr' -PropertyType String -Force | Out-Null
+New-ItemProperty -Path $uninstallKey -Name URLInfoAbout -Value 'https://github.com/lurrrrrr/PickSnap' -PropertyType String -Force | Out-Null
+# 从「设置 → 应用」点卸载时不弹控制台黑框：脚本本身用对话框确认，窗口隐藏即可。
+$uninstallCommand = 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + (Join-Path $installPath 'uninstall.ps1') + '"'
 New-ItemProperty -Path $uninstallKey -Name UninstallString -Value $uninstallCommand -PropertyType String -Force | Out-Null
+$size = [int](((Get-ChildItem -LiteralPath $installPath -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum) / 1KB)
+New-ItemProperty -Path $uninstallKey -Name EstimatedSize -Value $size -PropertyType DWord -Force | Out-Null
 New-ItemProperty -Path $uninstallKey -Name NoModify -Value 1 -PropertyType DWord -Force | Out-Null
 New-ItemProperty -Path $uninstallKey -Name NoRepair -Value 1 -PropertyType DWord -Force | Out-Null
 Start-Process -FilePath $exePath -WindowStyle Hidden

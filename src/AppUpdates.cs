@@ -157,6 +157,28 @@ namespace ScreenLine
             catch (UnauthorizedAccessException) { }
         }
 
+        // 下载缓存只在一次更新过程中有用：启动时顺手清掉半天前的残留（下载中断、安装失败留下的半成品），
+        // 既不会占着几十兆空间，也不会和正在进行的更新抢文件。
+        public static void ClearStaleCache()
+        {
+            try
+            {
+                if (!Directory.Exists(Cache)) return;
+                foreach (var directory in Directory.GetDirectories(Cache))
+                {
+                    try
+                    {
+                        if (DateTime.UtcNow - Directory.GetLastWriteTimeUtc(directory) < TimeSpan.FromHours(12)) continue;
+                        Directory.Delete(directory, true);
+                    }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                }
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+
         static string Quote(string value) { return "\"" + value + "\""; }
         public void Dispose() { client.Dispose(); }
 

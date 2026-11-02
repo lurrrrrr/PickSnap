@@ -396,7 +396,12 @@ namespace ScreenLine
             if (pending == null) { Trace("→ 不暂存：没有可覆盖的上一张"); return false; }
             // 截图工具活着时进程名能查到；退出时最后写一次剪贴板、进程随即销毁，所有者就是空的，同样算它。
             if (!IsCaptureTool(owner) && owner.Length > 0) { Trace("→ 不暂存：所有者不是截图工具"); return false; }
-            if (DateTime.UtcNow - clipboardLastCommitAt > TimeSpan.FromMinutes(10)) { Trace("→ 不暂存：距上次保存超过10分钟"); return false; }
+            // 十分钟窗口不能只看剪贴板提交时间：PrtSc 这类截图工具会先把文件落盘（文件夹监听先收到、
+            // 剪贴板那路被配对去重拦下），从没有过剪贴板提交记录。窗口锚在图片入库的时刻上——
+            // 剪贴板路径提交即写新文件，两者一致；文件路径就是截图落盘时间。取两者较新者兜底。
+            DateTime anchored = clipboardLastCommitAt > File.GetCreationTimeUtc(pending.Path)
+                ? clipboardLastCommitAt : File.GetCreationTimeUtc(pending.Path);
+            if (DateTime.UtcNow - anchored > TimeSpan.FromMinutes(10)) { Trace("→ 不暂存：这张图已经放上超过10分钟"); return false; }
             bool sameSize = content.PixelWidth == pending.Image.PixelWidth && content.PixelHeight == pending.Image.PixelHeight;
             double difference;
             if (sameSize) difference = ImageContent.Difference(pending.Image, content);

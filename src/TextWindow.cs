@@ -54,8 +54,10 @@ namespace ScreenLine
         readonly TextBlock count = new TextBlock();
         readonly TextBlock feedback = new TextBlock { Foreground = LightTheme.Brush("#65717F"), FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
         readonly TextBlock empty = new TextBlock { TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Foreground = LightTheme.Brush("#65717F"), Margin = new Thickness(20) };
-        readonly Polygon pointer = new Polygon { Points = new PointCollection { new Point(0, 12), new Point(12, 0), new Point(24, 12) }, Fill = Brushes.White, Width = 24, Height = 12, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        readonly Polygon pointer = new Polygon { Points = new PointCollection { new Point(0, 12), new Point(12, 0), new Point(24, 12) }, Fill = LightTheme.Brush("#FFFFFF"), Width = 24, Height = 12, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         readonly DispatcherTimer feedbackTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        // 信封收起后的孤儿面板自毁定时器：收集关着且一条文字都没有时，窗口没有存在意义。
+        readonly DispatcherTimer orphanTimer = new DispatcherTimer();
         readonly Button undoButton = new Button { Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 0, 0) };
         Action undoAction;
         internal readonly TextBox Search = new TextBox();
@@ -146,7 +148,7 @@ namespace ScreenLine
                 <CheckBox IsChecked='{Binding IsMarked, Mode=TwoWay}' Tag='select' AutomationProperties.Name='选择文字' Width='22' Height='22' HorizontalAlignment='Left' VerticalAlignment='Top' Cursor='Hand'>
                   <CheckBox.Template><ControlTemplate TargetType='CheckBox'>
                     <Border Background='Transparent'>
-                      <Border x:Name='Mark' Width='18' Height='18' CornerRadius='9' Background='White' BorderBrush='#8BA4C4' BorderThickness='1' Opacity='0' HorizontalAlignment='Center' VerticalAlignment='Center'>
+                      <Border x:Name='Mark' Width='18' Height='18' CornerRadius='9' Background='#FFFFFF' BorderBrush='#8BA4C4' BorderThickness='1' Opacity='0' HorizontalAlignment='Center' VerticalAlignment='Center'>
                         <Path x:Name='Tick' Width='10' Height='7' Data='M0,3 L3,6 L9,0' Stroke='White' StrokeThickness='1.6' StrokeStartLineCap='Round' StrokeEndLineCap='Round' StrokeLineJoin='Round' HorizontalAlignment='Center' VerticalAlignment='Center' Visibility='Collapsed'/>
                       </Border>
                     </Border>
@@ -188,6 +190,12 @@ namespace ScreenLine
             batch.Children.Add(SelectAllButton); batch.Children.Add(DeleteSelectedButton); Grid.SetRow(batch, 3); body.Children.Add(batch);
 
             feedbackTimer.Tick += delegate { feedback.Text = ""; undoAction = null; undoButton.Visibility = Visibility.Collapsed; feedbackTimer.Stop(); };
+            // 到点复核一次：期间用户撤销了删除或重新开启收集的话，条件不再成立就继续留着。
+            orphanTimer.Tick += delegate
+            {
+                orphanTimer.Stop();
+                if (!closed && !texts.CollectClipboard && texts.Items.Count == 0) Close();
+            };
             SourceInitialized += delegate { Position(); };
             Loaded += delegate { Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(Position)); };
             DpiChanged += delegate { Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(Position)); };
@@ -195,7 +203,7 @@ namespace ScreenLine
             Deactivated += delegate { if (IsVisible) Close(); };
             PreviewKeyDown += delegate(object sender, KeyEventArgs e) { if (e.Key == Key.Escape) { e.Handled = true; Close(); } };
             texts.Changed += Refresh;
-            Closed += delegate { closed = true; texts.Changed -= Refresh; shelf.SizeChanged -= ShelfMoved; shelf.LocationChanged -= ShelfMoved; shelf.RopeHidden -= Close; feedbackTimer.Stop(); };
+            Closed += delegate { closed = true; texts.Changed -= Refresh; shelf.SizeChanged -= ShelfMoved; shelf.LocationChanged -= ShelfMoved; shelf.RopeHidden -= Close; feedbackTimer.Stop(); orphanTimer.Stop(); };
             Refresh();
         }
 
@@ -211,6 +219,8 @@ namespace ScreenLine
             Height = Math.Min(456, Math.Max(180, (area.Bottom - Math.Max(area.Top, anchor.Y)) / dpi - 8));
             double left = Math.Max(area.Left + 8 * dpi, Math.Min(area.Right - (Width + 8) * dpi, anchor.X - (Width - 76) * dpi));
             double top = Math.Max(area.Top + 4 * dpi, Math.Min(area.Bottom - Height * dpi, anchor.Y));
+            // 信封没摆出来时窗口退到屏幕右上，小三角指向的是虚空，藏掉。
+            pointer.Visibility = shelf.TextButton.IsVisible ? Visibility.Visible : Visibility.Collapsed;
             pointer.Margin = new Thickness(Math.Max(30, Math.Min(Width - 54, (anchor.X - left) / dpi - 12)), 0, 0, 0);
             var handle = new WindowInteropHelper(this).Handle;
             if (handle != IntPtr.Zero) WindowsNative.SetWindowPos(handle, new IntPtr(-1), (int)Math.Round(left), (int)Math.Round(top), (int)Math.Round(Width * dpi), (int)Math.Round(Height * dpi), 0x10);
@@ -234,6 +244,17 @@ namespace ScreenLine
                 ? "还没有文字\n复制的文字会自动出现在这里"
                 : "尚未开启文字收集\n在托盘「剪贴板收集」中开启「文字」" : "没有找到匹配的文字";
             empty.Visibility = List.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            // 文字清空且收集也关着时信封会收起（ShowEnvelope 为假），窗口就只剩一块
+            // 「尚未开启」的空壳——自己收掉。正在展示可撤销的删除反馈时多等一拍，
+            // 让用户来得及点「撤销」；平时稍候即关。
+            if (!texts.CollectClipboard && texts.Items.Count == 0)
+            {
+                orphanTimer.Interval = undoButton.Visibility == Visibility.Visible ? TimeSpan.FromSeconds(5.5) : TimeSpan.FromMilliseconds(700);
+                if (!orphanTimer.IsEnabled) orphanTimer.Start();
+            }
+            else orphanTimer.Stop();
+            // 文字增删会改变信封的显隐（清空且收集关着时信封收起），锚点跟着变，重算一次位置。
+            Position();
             if (scroll != null) scroll.ScrollToVerticalOffset(offset);
         }
 

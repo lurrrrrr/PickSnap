@@ -20,6 +20,8 @@ namespace ScreenLine
         public bool CollectTextClipboard { get; set; }
         public bool AutoHang { get; set; }
         public bool HoverPreview { get; set; }
+        // 关闭后鼠标移到屏幕顶部不再自动展开，仍可用 Ctrl+Alt+T 或托盘图标显示（默认关闭本项 = 悬停展开可用）。
+        public bool NoHoverReveal { get; set; }
         public string Theme { get; set; }
         // 界面配色：auto（跟随系统）/ light / dark
         public string AppTheme { get; set; }

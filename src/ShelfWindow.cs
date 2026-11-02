@@ -19,7 +19,7 @@ using Forms = System.Windows.Forms;
 
 namespace ScreenLine
 {
-    internal enum ShotAction { Copy, Open, Edit, Remove, Trash, Save, Locate, RemoveLeft, RemoveRight, RemoveOthers, RemoveAll }
+    internal enum ShotAction { Copy, Open, Edit, Remove, Trash, Save, Locate, RemoveLeft, RemoveRight, RemoveOthers, RemoveAll, TrashLeft, TrashRight, TrashOthers, TrashAll }
 
     internal sealed class ShelfWindow : Window
     {
@@ -58,6 +58,9 @@ namespace ScreenLine
         readonly Border textCounter = new Border();
         public event Action TextRequested;
         public event Action RopeHidden;
+        // 绳子重新排布（启动、换屏）后自己会被 SetWindowPos 提到置顶组最前，
+        // 开着的小窗口要据此把自己再提回来，否则会被压在绳子下面。
+        public event Action RopeMoved;
         readonly TranslateTransform slide = new TranslateTransform(0, HiddenY);
         readonly SpringMotion revealMotion = new SpringMotion(0.42, 0.82, HiddenY);
         readonly SpringMotion ropeMotion = new SpringMotion(0.55, 0.78, 18);
@@ -86,7 +89,13 @@ namespace ScreenLine
         internal bool ChoosingBasket { get; set; }
         internal bool ChoosingTexts { get; set; }
         internal bool Capturing { get; set; }
-        double AccessoryWidth { get { return 156 + 104; } }
+        // 关掉某类收集后，对应的入口就从绳子上收起来，把右端让给图片；内容仍在，随时可从托盘面板打开。
+        // 篮子例外：自动上绳关掉后，新截图仍然会落进篮子，这时不能把入口藏了。
+        bool ShowBasket { get { return gallery.Store.State.CollectClipboard || !gallery.Store.State.AutoHang; } }
+        // 信封例外于篮子：收集关掉但里面还有文字时保留图标——否则从托盘点「文字信封」
+        // 打开窗口时没有锚点，窗口会飘在屏幕角落。文字清空且收集也关着才真正收起来。
+        bool ShowEnvelope { get { return gallery.Store.State.CollectTextClipboard || gallery.Store.State.Texts.Count > 0; } }
+        double AccessoryWidth { get { return (ShowBasket ? 156 : 0) + (ShowEnvelope ? 104 : 0); } }
         // 绳子两端的滚动箭头：无底板、无边框的纤细雪佛龙，外面包一块几乎不可见的隐形垫（约 2% 透明度）
         // 扩大命中区——纯透明背景在分层窗口会被系统穿透，alpha>0 才点得到。默认近乎隐身（透明度 0.25），
         // 指针进入绳带区域升到 0.6，悬停箭头 0.9 并轻微放大（arrowHover 轮询驱动）。随绳子一起隐藏（共用 slide 位移）。
@@ -115,6 +124,10 @@ namespace ScreenLine
         readonly ScaleTransform scrollRightScale = new ScaleTransform(), scrollLeftScale = new ScaleTransform();
         // 箭头明暗轮询：绳带悬停状态（含透明像素区，WPF 事件收不到）靠定时器探测。
         readonly DispatcherTimer arrowHover = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+        // 换屏分两步走：先收起、等一小会儿再移动、再展开。跨屏缩放比不同，窗口尺寸会突变，
+        // 收着移动就看不见那一跳。180ms 足够收起动画走完，又不至于让人觉得卡。
+        readonly DispatcherTimer displaySwitch = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(180) };
+        bool displaySwitchShown;
         // 拖夹子到视口边缘时的自动滚动方向（-1 向左 / 1 向右 / 0 不滚）；按渲染帧积分推进，保持顺滑。
         int dragScrollDirection;
         // 刚放下夹子后不再吸附，避免视图自己挪动。
@@ -144,7 +157,8 @@ namespace ScreenLine
         {
             get
             {
-                if (!TextButton.IsVisible) return new Point(Display.WorkingArea.Right - 80, Display.WorkingArea.Top + 160 * WindowsNative.MonitorScale(Display));
+                // 信封没摆出来时的退路：贴屏幕右上、落在绳子下方，别压在绳带上。
+                if (!TextButton.IsVisible) return new Point(Display.WorkingArea.Right - 80, Display.WorkingArea.Top + 236 * WindowsNative.MonitorScale(Display));
                 var point = textCounter.PointToScreen(new Point(textCounter.ActualWidth / 2, textCounter.ActualHeight + 4));
                 point.Y -= slide.Y * WindowsNative.MonitorScale(Display);
                 return point;
@@ -235,7 +249,7 @@ namespace ScreenLine
             System.Windows.Automation.AutomationProperties.SetName(BasketButton, "打开图片篮子");
             basket.Children.Add(BasketButton); Canvas.SetLeft(BasketButton, 6); Canvas.SetTop(BasketButton, 20);
             // 篮子作为拖放目标：把挂着的图片直接拖到篮子上即可收进篮子，
-            // 松手后走「取下放篮子」的既有动画（飞行入篮 + 篮身晃动）。
+            // 松手后走「取下放进篮子」的既有动画（飞行入篮 + 篮身晃动）。
             BasketButton.AllowDrop = true;
             BasketButton.DragOver += delegate(object sender, DragEventArgs e)
             {
@@ -345,6 +359,13 @@ namespace ScreenLine
             Loaded += delegate { Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(delegate { if (!closing) MoveToDisplay(); })); };
             SizeChanged += delegate { UpdateAccessories(); TrimToCapacity(); LayoutCards(); };
             pointer.Tick += Tick;
+            displaySwitch.Tick += delegate
+            {
+                displaySwitch.Stop();
+                if (closing) return;
+                MoveToDisplay();
+                if (displaySwitchShown) Reveal(true, true, 0);
+            };
             gallery.Changed += Update;
             Microsoft.Win32.SystemEvents.DisplaySettingsChanged += DisplaysChanged;
             Closed += delegate
@@ -396,6 +417,7 @@ namespace ScreenLine
             if (Handle != IntPtr.Zero)
                 WindowsNative.SetWindowPos(Handle, new IntPtr(-1), screen.WorkingArea.Left, screen.WorkingArea.Top, screen.WorkingArea.Width, (int)Math.Round(220 * scale), 0x10);
             LayoutCards();
+            if (RopeMoved != null) RopeMoved();
         }
 
         internal void SetDisplay(string device)
@@ -404,8 +426,17 @@ namespace ScreenLine
             gallery.Store.State.DisplayDevice = device;
             try { gallery.Store.Save(); }
             catch { gallery.Store.State.DisplayDevice = previous; throw; }
-            MoveToDisplay();
-            Reveal(true, true, 0);
+            ScheduleDisplaySwitch(true);
+        }
+
+        // 收起 → 移动 → 展开。跨屏缩放比不同时窗口尺寸会突变，收着换屏就看不到那一跳。
+        void ScheduleDisplaySwitch(bool revealAfter)
+        {
+            displaySwitchShown = revealAfter;
+            displaySwitch.Stop();
+            if (!Revealed) { MoveToDisplay(); if (revealAfter) Reveal(true, true, 0); return; }
+            Reveal(false, false, 0);
+            displaySwitch.Start();
         }
 
         public void Update()
@@ -481,7 +512,7 @@ namespace ScreenLine
             return Math.Max(0, RopeCapacity - hanging);
         }
 
-        // 超出容量时把最早的几张走「取下放篮子」退回（带飞入篮子的动画，记录与文件都保留）。
+        // 超出容量时把最早的几张走「取下放进篮子」退回（带飞入篮子的动画，记录与文件都保留）。
         // act 会触发 Gallery.Changed → Update 重入，用 trimming 防止递归。
         void TrimToCapacity()
         {
@@ -732,7 +763,11 @@ namespace ScreenLine
 
         internal CaptureItem[] HangingItems()
         {
-            return gallery.Items.Where(item => cards.ContainsKey(item.Path) && !cards[item.Path].Detached).ToArray();
+            // 按卡片当前在绳上的横向位置（MountX）从左到右排序，而不是 gallery.Items
+            // 的收集顺序：绳上的图可以自由拖动换位，「左侧全部/右侧全部」必须始终
+            // 指屏幕上看见的左边/右边，拖移后立刻按新位置算。
+            return gallery.Items.Where(item => cards.ContainsKey(item.Path) && !cards[item.Path].Detached)
+                .OrderBy(item => cards[item.Path].MountX).ToArray();
         }
 
         // 该截图是否正处于"贴到桌面"状态（卡片已从绳子取下，钉在桌面上）。
@@ -811,11 +846,13 @@ namespace ScreenLine
 
         void UpdateAccessories()
         {
-            // 篮子和信封常驻挂在绳上，不再跟随收集开关隐藏；信封在最右，篮子在它左边。
-            BasketButton.Visibility = basketHolder.Visibility = Visibility.Visible;
-            TextButton.Visibility = textHolder.Visibility = Visibility.Visible;
+            // 收集开关决定入口去留：关掉图片收集就不摆篮子（自动上绳关掉但还在收集时例外），
+            // 关掉文字收集就不摆信封，绳子右端空出来的宽度还给图片。
+            bool basket = ShowBasket, envelope = ShowEnvelope;
+            BasketButton.Visibility = basketHolder.Visibility = basket ? Visibility.Visible : Visibility.Collapsed;
+            TextButton.Visibility = textHolder.Visibility = envelope ? Visibility.Visible : Visibility.Collapsed;
             textHolder.Margin = new Thickness(0, 0, 24, 0);
-            basketHolder.Margin = new Thickness(0, 0, 136, 0);
+            basketHolder.Margin = new Thickness(0, 0, envelope ? 136 : 24, 0);
             viewport.Margin = new Thickness(24, 0, 24 + AccessoryWidth, 0);
             drawnWidth = -1;
         }
@@ -1266,10 +1303,13 @@ namespace ScreenLine
             if (nearTop && !down && !suppressEdge && !WindowsNative.FullScreen(screen, Handle))
             {
                 if (edgeSince == DateTime.MaxValue) edgeSince = now;
-                if (now - edgeSince >= TimeSpan.FromMilliseconds(320) && (!Revealed || screen.DeviceName != Display.DeviceName))
+                // 「鼠标移至顶部时展开」关掉后不再自动出现；已经在绳子上的保持原样（照旧是离开才收起）。
+                bool hoverAllowed = Revealed || !gallery.Store.State.NoHoverReveal;
+                if (hoverAllowed && !displaySwitch.IsEnabled && now - edgeSince >= TimeSpan.FromMilliseconds(320)
+                    && (!Revealed || screen.DeviceName != Display.DeviceName))
                 {
-                    MoveToDisplay();
-                    Reveal(true, false, 0);
+                    if (Revealed) ScheduleDisplaySwitch(true);   // 换屏：先收起再移动
+                    else { MoveToDisplay(); Reveal(true, false, 0); }
                 }
             }
             else edgeSince = DateTime.MaxValue;
@@ -1426,7 +1466,7 @@ namespace ScreenLine
             SetLeft(Grip, 68); SetTop(Grip, -4);
             copied.Width = 84;
             copied.Padding = new Thickness(10, 4, 10, 4);
-            copied.Background = Brushes.White;
+            copied.Background = LightTheme.Brush("#FFFFFF");
             copied.BorderBrush = LightTheme.Brush("#DCE1E9");
             copied.BorderThickness = new Thickness(1);
             copied.CornerRadius = new CornerRadius(12);

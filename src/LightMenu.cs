@@ -19,7 +19,7 @@ namespace ScreenLine
     <Setter Property='HasDropShadow' Value='False'/><Setter Property='SnapsToDevicePixels' Value='True'/>
     <Setter Property='TextOptions.TextFormattingMode' Value='Display'/>
     <Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ContextMenu'>
-      <Border Margin='16' Padding='6' Background='White' BorderBrush='#E0E4EA' BorderThickness='1' CornerRadius='14'>
+      <Border Margin='16' Padding='6' Background='#FFFFFF' BorderBrush='#E0E4EA' BorderThickness='1' CornerRadius='14'>
         <Border.Effect><DropShadowEffect Color='#26394C' BlurRadius='22' ShadowDepth='6' Opacity='0.16'/></Border.Effect>
         <StackPanel IsItemsHost='True' KeyboardNavigation.DirectionalNavigation='Cycle'/>
       </Border>
@@ -72,15 +72,20 @@ namespace ScreenLine
             { "save", "M12,3 V15 M8,11 L12,15 L16,11 M4,15 V19 Q4,21 6,21 H18 Q20,21 20,19 V15" },
             { "folder", "M3,7 V5 Q3,3 5,3 H9 L12,6 H19 Q21,6 21,8 V9 M3,7 H19 Q21,7 21,9 L19,19 Q19,21 17,21 H5 Q3,21 3,19 Z" },
             { "trash", "M3,6 H21 M9,6 V4 Q9,3 10,3 H14 Q15,3 15,4 V6 M5,6 L6,20 Q6,21 7,21 H17 Q18,21 18,20 L19,6 M10,10 V17 M14,10 V17" },
+            { "uninstall", "M12,3 V13 M8,7 L12,3 L16,7 M4,11 V19 Q4,21 6,21 H18 Q20,21 20,19 V11" },
             { "show", "M3,5 H21 M6,5 V19 H18 V5 M9,10 H15 M9,14 H13" },
+            // 以下图标避免与 show/picture 撞车：不同操作必须配不同图标。
+            { "autohang", "M3,4 H21 M12,20 V9 M8,13 L12,9 L16,13" },
+            { "reveal", "M3,4 H21 M9,9 V19 L12.3,15.7 L14.3,20.5 L16.3,19.5 L14.3,14.7 H18 Z" },
+            { "desktopplus", "M6,5 H15 Q17,5 17,7 V13 Q17,15 15,15 H6 Q4,15 4,13 V7 Q4,5 6,5 Z M10.5,15 V19 M7,19 H14 M21,3 V9 M18,6 H24" },
+            { "crosshair", "M12,2 V6 M12,18 V22 M2,12 H6 M18,12 H22 M12,6 A6,6 0 1 0 12,18 A6,6 0 1 0 12,6 Z" },
+            { "zoom", "M10,4 A6,6 0 1 1 10,16 A6,6 0 1 1 10,4 Z M14.6,14.6 L20,20" },
             { "monitor", "M4,3 H20 Q22,3 22,5 V15 Q22,17 20,17 H4 Q2,17 2,15 V5 Q2,3 4,3 Z M12,17 V21 M7,21 H17" },
-            { "clipboard", "M9,3 H15 V7 H9 Z M9,5 H6 Q4,5 4,7 V19 Q4,21 6,21 H18 Q20,21 20,19 V7 Q20,5 18,5 H15 M8,12 H16 M8,16 H14" },
             { "add", "M14,3 H5 Q3,3 3,5 V19 Q3,21 5,21 H19 Q21,21 21,19 V12 M3,17 L8,12 L12,16 L15,13 L21,19 M17,6 H23 M20,3 V9" },
             { "clear", "M6,3 H19 Q21,3 21,5 V16 M5,7 H15 Q17,7 17,9 V19 Q17,21 15,21 H5 Q3,21 3,19 V9 Q3,7 5,7 Z M7,14 H13" },
             { "startup", "M12,3 L19,10 H14 V21 H10 V10 H5 Z" },
             { "appearance", "M12,3 A9,9 0 1 0 12,21 H14 Q17,21 17,18 Q17,16 15,16 H14 Q12,16 12,14 Q12,12 14,12 H19 Q22,12 21,9 Q20,3 12,3 Z M7,8 H7.1 M11,6 H11.1 M16,7 H16.1 M6,13 H6.1" },
             { "exit", "M6,6 A8,8 0 1 0 18,6 M12,3 V12" },
-            { "remove", "M4,12 H20" },
             { "envelope", "M5,4 H19 Q21,4 21,6 V18 Q21,20 19,20 H5 Q3,20 3,18 V6 Q3,4 5,4 Z M3,6 L12,13 L21,6" },
             { "picture", "M5,3 H19 Q21,3 21,5 V19 Q21,21 19,21 H5 Q3,21 3,19 V5 Q3,3 5,3 Z M3,16 L8,11 L13,16 L17,12 L21,16 M16,7 H18" },
             { "text", "M6,3 H18 Q20,3 20,5 V19 Q20,21 18,21 H6 Q4,21 4,19 V5 Q4,3 6,3 Z M8,9 H16 M8,14 H13" },
