@@ -162,7 +162,7 @@ Source in `src\`, third-party components in `vendor\`, build and packaging scrip
 
 ## Data and privacy
 
-Everything stays on your machine: images live in `data\Captures` under the program folder, settings and text in `data\state.json`. Nothing is uploaded; checking for updates manually, plus an automatic check every 12 hours, only reads version information from GitHub Releases (automatic failures are silent).
+Everything stays on your machine: images live in `data\Captures` under the program folder, settings and text in `data\state.json`. Nothing is uploaded; checking for updates manually, plus an automatic check every 12 hours, only reads version information from GitHub Releases.
 
 Images do not expire on their own: the line has limited room, and images that do not fit go back to the basket while the files stay on disk — you decide when to clean up (the optional auto-clean only moves expired copies to the Recycle Bin). The text envelope keeps the most recent 100 entries; older text is pushed out by new copies.
 
@@ -223,7 +223,7 @@ Once the image basket passes **100 images**, you get one reminder per new screen
 <details>
 <summary>How do I update?</summary>
 
-Right-click the tray icon → "More" → "Check for updates", then restart once the download finishes. Images, settings and the run-at-startup entry are preserved. If you are already on the latest version it says so; if GitHub cannot be reached, the window shows your current version, makes clear this does not mean a new version exists, and offers an "Open download page" button (if you recently confirmed you were up to date, you only get a gentle notice instead of a connection-error dialog).
+Right-click the tray icon → "More" → "Check for updates", then restart once the download finishes. Images, settings and the run-at-startup entry are preserved. If you are already on the latest version it says so; if GitHub cannot be reached, the window shows your current version, makes clear this does not mean a new version exists, and offers an "Open download page" button.
 
 </details>
 
