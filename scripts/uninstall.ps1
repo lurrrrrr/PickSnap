@@ -166,16 +166,20 @@ if ($leftover -eq 0 -and $failed.Count -eq 0) {
     }
 }
 
+# 解压文件夹是用户自己解压出来的，不在安装/卸载脚本的管辖范围内（脚本也不知道它在哪），
+# 明确告知一声，免得用户以为卸载没删干净。
+$sourceNote = "`n`n安装时解压出来的文件夹（含 Install.cmd）不属于卸载范围，如仍保留可自行整个删除；程序已装在上面的固定目录，与它无关。"
+
 if ($failed.Count -gt 0) {
     Show-Info ("拾帧已卸载，但下面这些文件没能删除（可能正被其他程序占用）：`n`n" + ($failed -join "`n") + "`n`n稍后手动删除这个目录即可：`n$installPath") 'Warning'
 }
 elseif ($keepData -and (Test-Path -LiteralPath $stagedData)) {
-    Show-Info ("拾帧已卸载。`n`n图片与设置已保留（共 $pictureCount 张截图），暂存在：`n$stagedData`n`n重新运行 Install.cmd 安装后会自动迁回，继续使用这些内容。`n如果不再需要，直接删除上面这个目录即可。")
+    Show-Info ("拾帧已卸载。`n`n图片与设置已保留（共 $pictureCount 张截图），暂存在：`n$stagedData`n`n重新运行 Install.cmd 安装后会自动迁回，继续使用这些内容。`n如果不再需要，直接删除上面这个目录即可。" + $sourceNote)
 }
 elseif ($keepData) {
-    Show-Info '拾帧已卸载。安装目录里没有找到已收集的图片和设置（可能之前卸载时已暂存），重新安装后会自动恢复。'
+    Show-Info ('拾帧已卸载。安装目录里没有找到已收集的图片和设置（可能之前卸载时已暂存），重新安装后会自动恢复。' + $sourceNote)
 }
 else {
-    Show-Info '拾帧已卸载，程序、图片、设置和缓存都已删除。'
+    Show-Info ('拾帧已卸载，程序、图片、设置和缓存都已删除。' + $sourceNote)
 }
 exit 0

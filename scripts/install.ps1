@@ -41,4 +41,12 @@ New-ItemProperty -Path $uninstallKey -Name EstimatedSize -Value $size -PropertyT
 New-ItemProperty -Path $uninstallKey -Name NoModify -Value 1 -PropertyType DWord -Force | Out-Null
 New-ItemProperty -Path $uninstallKey -Name NoRepair -Value 1 -PropertyType DWord -Force | Out-Null
 Start-Process -FilePath $exePath -WindowStyle Hidden
+
+# 程序文件全部是复制过来的，装完解压目录就不再是运行所需。用对话框明确告知可删，
+# 并写出具体路径——之前只有一句 Write-Output，Install.cmd 的窗口一闪就关，用户根本看不到。
+$sourcePath = [IO.Path]::GetFullPath($PSScriptRoot)
+Add-Type -AssemblyName System.Windows.Forms | Out-Null
+[System.Windows.Forms.MessageBox]::Show(
+    ("拾帧安装完成，桌面已创建 PickSnap 快捷方式。`n`n程序已安装到：`n$installPath`n`n本次解压出来的文件夹已经不再需要，可以整个删除：`n$sourcePath`n`n卸载程序只清理上面的安装目录，不会动这个解压文件夹。`n（想留着以后重装，保留下载的 zip 安装包本身即可。）"),
+    '拾帧 PickSnap 安装完成', 'OK', 'Information') | Out-Null
 Write-Output '拾帧安装完成，桌面已创建 PickSnap 快捷方式。'

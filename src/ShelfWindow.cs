@@ -536,11 +536,17 @@ namespace ScreenLine
             double available = PhotoWidth;
             var hanging = gallery.Items.Where(item => !cards[item.Path].Detached).ToArray();
             double contentWidth = Math.Max(available, hanging.Length * 172 + 32);
-            foreach (var item in hanging)
+            // 贴到桌面的卡片只是暂时离开绳面，位置要继续占住：否则贴走最右一张时绳子右端
+            // 会立刻缩短，ScrollLimit 随之变小，正停在最右侧的视图被瞬间钳回新上限，
+            // 看起来就是「这张图的位置被挤掉了、绳子动了一下」。下面的 blocked 排位避让
+            // 早已把 Detached 卡片算进去，这里让绳长计算与它保持一致。
+            foreach (var item in gallery.Items)
             {
+                ShotCard holder;
+                if (!cards.TryGetValue(item.Path, out holder)) continue;
                 double saved;
                 if (manualOffsets.TryGetValue(item.Path, out saved)) contentWidth = Math.Max(contentWidth, saved + CardWidth + 16);
-                else if (settled.Contains(item.Path)) contentWidth = Math.Max(contentWidth, cards[item.Path].MountX + CardWidth + 16);
+                else if (settled.Contains(item.Path)) contentWidth = Math.Max(contentWidth, holder.MountX + CardWidth + 16);
             }
             content.Width = contentWidth;
             content.Height = 220;
@@ -923,20 +929,24 @@ namespace ScreenLine
             }
             // 卡片还没建出来时不要把视野甩到最右端（挂图后"突然跳到最右边"的来源之一），保持当前视野即可。
             else scrollMotion.Target = Math.Max(0, Math.Min(ScrollLimit, scrollMotion.Target));
-            ropeMotion.Velocity += 8;
+            // 回弹比原来的 8 轻一些，避免新图挂上去时整排夹子跟着大幅晃动。
+            ropeMotion.Velocity += 6;
             if (!Revealed || !origin.HasValue || flights.Count(f => !f.Falling && !f.Collecting) >= 2) return;
             ShotCard card = cards[item.Path];
             if (card.Detached) return;
             card.BeginFlight();
             var bounds = Display.Bounds;
-            double scale = Math.Min(1, Math.Min(bounds.Width * 0.7 / item.Image.PixelWidth, bounds.Height * 0.7 / item.Image.PixelHeight));
+            // 起飞图不再铺到屏幕 70%（全屏截图甚至从整屏起步）：以「卡片约 3.2 倍大、
+            // 且不超过屏幕 42%」为上界，保留「这是刚截的图」的辨识度，又不会从整屏猛缩成小卡片。
+            double monitorScale = WindowsNative.MonitorScale(Display);
+            double maxWidth = Math.Min(bounds.Width * 0.42, 164 * 3.2 * monitorScale);
+            double maxHeight = Math.Min(bounds.Height * 0.42, 178 * 3.2 * monitorScale);
+            double scale = Math.Min(1, Math.Min(maxWidth / item.Image.PixelWidth, maxHeight / item.Image.PixelHeight));
             double width = item.Image.PixelWidth * scale, height = item.Image.PixelHeight * scale;
             double left = Math.Max(bounds.Left, Math.Min(bounds.Right - width, origin.Value.X - width));
             double top = Math.Max(bounds.Top, Math.Min(bounds.Bottom - height, origin.Value.Y - height));
             Rect start = new Rect(left, top, width, height);
-            if (item.Image.PixelWidth == bounds.Width && item.Image.PixelHeight == bounds.Height)
-                start = new Rect(bounds.Left, bounds.Top, bounds.Width, bounds.Height);
-            PlayFlight(new ShotFlight(Display, card, start, false, card.Land));
+            PlayFlight(new ShotFlight(Display, card, start, false, card.Land, fresh: true));
         }
 
         public void ShowDiscard(CaptureItem item)
@@ -995,10 +1005,16 @@ namespace ScreenLine
             if (view <= 8) return;
             double left = card.MountX - offset, right = left + CardWidth;
             double target = offset;
-            if (left < 8 || right > view - 8)
+            // 只有卡片真的滑出视野才调整。贴着视口边缘（绳子最左 / 最右那张）仍算可见：
+            // 旧条件 left < 8 || right > view - 8 会把它们判成"离屏"，再按居中把整条绳子
+            // 推走，挂回时看起来就像卡片突然跑到了绳子中间（其实卡片没动，是视图动了）。
+            if (right < 8 || left > view - 8)
             {
-                double limit = Math.Max(0, content.Width - view);
-                target = Math.Max(0, Math.Min(limit, card.MountX + CardWidth / 2 - view / 2));
+                double limit = ScrollLimit;
+                // 最小滚动把它带回来、留 12px 边距，与 ShowNewCapture 的口径一致，不再居中。
+                target = right < 8
+                    ? Math.Max(0, card.MountX - 12)
+                    : Math.Max(0, Math.Min(limit, card.MountX + CardWidth + 12 - view));
             }
             suppressSnap = true;
             scrollMotion.Snap(target);

@@ -31,6 +31,10 @@ namespace ScreenLine
         public string LastUpdateNotification { get; set; }
         // 用户点「跳过此版本」记录的版本号：自动检查不再提醒它，直到出现更新的版本；手动检查仍然可见。
         public string SkippedUpdate { get; set; }
+        // 上次「成功连上 GitHub」时确认的线上最新版本号与时间。检查失败（限流/超时）时
+        // 用它说明「上次确认过你已是最新版」，而不是把所有失败都说成连接不上。
+        public string LastConfirmedVersion { get; set; }
+        public string LastConfirmedAt { get; set; }
         public uint CaptureModifiers { get; set; }
         public uint CaptureKey { get; set; }
         // 旧图自动清理：默认关闭。开启后按天数把过期的图片移出（收集文件夹内的副本进回收站）。

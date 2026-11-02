@@ -323,6 +323,14 @@ namespace ScreenLine
             {
                 availableUpdate = await updates.CheckAsync(updateLifetime.Token);
                 if (disposed) return;
+                // 只要请求成功看到线上正式版本，就记下「上次成功确认」的版本与时间；
+                // 之后再遇到限流/超时时，可以据此说明依据，而不是笼统报连接失败。
+                if (!string.IsNullOrEmpty(updates.LastSeenVersion))
+                {
+                    Gallery.Store.State.LastConfirmedVersion = updates.LastSeenVersion;
+                    Gallery.Store.State.LastConfirmedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+                    Gallery.Store.Save();
+                }
                 if (availableUpdate == null) { if (manual) Notice("你当前已是最新版本", 2, true); }
                 else if (manual) ShowUpdate();
                 else if (availableUpdate.Version != Gallery.Store.State.SkippedUpdate && Gallery.Store.State.LastUpdateNotification != availableUpdate.Version)
@@ -334,14 +342,34 @@ namespace ScreenLine
             }
             catch (Exception error)
             {
-                // 手动检查失败：小窗说明具体原因（超时/限流/其他），并给直接打开下载页的入口；自动检查保持静默。
-                if (!disposed && manual) UpdateWindow.ShowCheckFailed(error);
+                // 手动检查失败：小窗说明具体原因（超时/限流/其他），并给直接打开下载页的入口；
+                // 自动检查保持静默。若上次已成功确认过「本地就是最新版」，本次只是联网复查失败，
+                // 就给一条温和的确认，不再用「检查更新失败」的窗口惊扰用户。
+                if (!disposed && manual)
+                {
+                    if (ConfirmedUpToDate())
+                        Notice("已是最新版（本次未能联网复查，依据上次成功确认）", 3, true);
+                    else
+                        UpdateWindow.ShowCheckFailed(error, AppUpdates.CurrentVersion);
+                }
             }
             finally
             {
                 checkingUpdates = false; updateMenu.IsEnabled = true;
                 updateMenu.Header = availableUpdate == null ? "检查更新" : "更新到 " + availableUpdate.Version;
             }
+        }
+
+        // 最近一次成功检查确认的线上版本不高于本地，且确认时间不超过 7 天，
+        // 才认为「可以依据上次确认说是最新版」；过期太久的确认不作为依据。
+        bool ConfirmedUpToDate()
+        {
+            string version = Gallery.Store.State.LastConfirmedVersion;
+            if (string.IsNullOrEmpty(version)) return false;
+            DateTime when;
+            if (!DateTime.TryParse(Gallery.Store.State.LastConfirmedAt, out when) || (DateTime.Now - when).TotalDays > 7) return false;
+            try { return new Version(version) <= new Version(AppUpdates.CurrentVersion); }
+            catch { return false; }
         }
 
         void ShowUpdate()

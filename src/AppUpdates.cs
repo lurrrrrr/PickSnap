@@ -28,6 +28,9 @@ namespace ScreenLine
             .Cast<AssemblyInformationalVersionAttribute>().Single().InformationalVersion;
         internal static readonly string Cache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PickSnap", "Updates");
         readonly HttpClient client;
+        // 本次请求成功确认到的线上版本号（含「已是最新版」的情况）。失败的检查不会更新它，
+        // App 用它记住「上次成功确认」，好在网络失败时说明依据而不是笼统报连接不上。
+        public string LastSeenVersion { get; private set; }
 
         public AppUpdates() : this(new HttpClientHandler()) { }
         internal AppUpdates(HttpMessageHandler handler)
@@ -49,18 +52,26 @@ namespace ScreenLine
                     // 之前所有失败都笼统显示「无法连接」，但很多其实是限流：未认证接口每小时 60 次/IP。
                     if ((int)response.StatusCode == 403) throw new InvalidDataException("GitHub 接口达到访问上限（未登录每小时 60 次），请稍后再试。");
                     if (!response.IsSuccessStatusCode) throw new InvalidDataException("GitHub 返回错误 " + (int)response.StatusCode + "，请稍后再试。");
-                    return Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(false), CurrentVersion);
+                    string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    string seen;
+                    var found = Parse(body, CurrentVersion, out seen);
+                    LastSeenVersion = seen;
+                    return found;
                 }
             }
         }
 
-        internal static UpdateRelease Parse(string json, string current)
+        internal static UpdateRelease Parse(string json, string current, out string seenVersion)
         {
+            seenVersion = null;
             var release = new JavaScriptSerializer().Deserialize<ReleaseData>(json);
             if (release == null) throw new InvalidDataException("更新信息不完整。");
             if (release.draft || release.prerelease) return null;
             string version = (release.tag_name ?? "").TrimStart('v', 'V');
             if (!Regex.IsMatch(version, @"^\d+\.\d+\.\d+$")) throw new InvalidDataException("更新版本号无效。");
+            // 到这里说明请求成功、且线上确实有一个正式版本：把它记下来，
+            // 无论它比本地新还是一样（一样就是「已是最新版」）。
+            seenVersion = version;
             if (new Version(version) <= new Version(current)) return null;
             string file = "PickSnap-" + version + "-windows-x64.zip";
             var asset = (release.assets ?? new AssetData[0]).SingleOrDefault(item => item.name == file);

@@ -69,7 +69,7 @@ namespace ScreenLine
         // 并给出直接打开 GitHub 下载页的入口，用户不至于被网络问题卡住又找不到安装包。
         static Window checkFailedWindow;
 
-        public static void ShowCheckFailed(Exception error)
+        public static void ShowCheckFailed(Exception error, string currentVersion)
         {
             if (checkFailedWindow != null) { checkFailedWindow.Activate(); return; }
             string reason;
@@ -86,6 +86,9 @@ namespace ScreenLine
             var body = new StackPanel();
             body.Children.Add(new TextBlock { Text = "检查更新失败", FontSize = 17, FontWeight = FontWeights.SemiBold, Foreground = LightTheme.Brush("#283343") });
             body.Children.Add(new TextBlock { Text = reason, FontSize = 13, LineHeight = 21, TextWrapping = TextWrapping.Wrap, Foreground = LightTheme.Brush("#343D49"), Margin = new Thickness(0, 10, 0, 0) });
+            // 说清边界：请求失败只代表「没查到线上版本」，与本地版本新旧无关，
+            // 免得已经装了最新版的用户误以为程序坏了或版本有问题。
+            body.Children.Add(new TextBlock { Text = "你当前是 v" + currentVersion + "；本次只是没能查到线上版本，不代表有新版本。", FontSize = 13, LineHeight = 21, TextWrapping = TextWrapping.Wrap, Foreground = LightTheme.Brush("#343D49"), Margin = new Thickness(0, 4, 0, 0) });
             body.Children.Add(new TextBlock { Text = "也可以直接到 GitHub 下载最新版安装包，已收集的图片和设置不受影响。", FontSize = 13, LineHeight = 21, TextWrapping = TextWrapping.Wrap, Foreground = LightTheme.Brush("#65717F"), Margin = new Thickness(0, 4, 0, 0) });
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 18, 0, 0) };
             var open = LightTheme.Button("打开下载页", delegate {
