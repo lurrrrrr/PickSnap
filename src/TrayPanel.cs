@@ -126,6 +126,7 @@ namespace ScreenLine
             Width = 324; FontFamily = LightTheme.UiFont; FontSize = 12;
             Foreground = LightTheme.Brush("#283343"); HasDropShadow = false; SnapsToDevicePixels = true;
             TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
+            LightTheme.SoftwareRenderMenu(this);
             tipDelay.Tick += delegate
             {
                 tipDelay.Stop();

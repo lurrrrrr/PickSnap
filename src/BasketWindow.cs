@@ -358,21 +358,42 @@ namespace ScreenLine
             bool resizing = false;
             double resizeFromX = 0, resizeFromY = 0, resizeStartWidth = 0, resizeStartHeight = 0;
             double maxWidth = screen.WorkingArea.Width / dpi - 16, maxHeight = screen.WorkingArea.Height / dpi - 16;
+            // 尺寸按渲染帧应用：高报告率鼠标一秒能送来上千条移动消息，每条都改 Width/Height
+            // 会把整窗布局压垮（表现为拖拽缩放一顿一顿）。先把目标记下来，每帧最多布局一次。
+            double pendingWidth = 0, pendingHeight = 0;
+            bool resizeScheduled = false;
+            EventHandler applyResize = null;
+            applyResize = delegate
+            {
+                CompositionTarget.Rendering -= applyResize;
+                resizeScheduled = false;
+                if (resizing) { Width = pendingWidth; Height = pendingHeight; }
+            };
             grip.MouseLeftButtonDown += delegate(object sender, MouseButtonEventArgs e)
             {
                 var from = WindowsNative.Cursor();
                 resizing = true; resizeFromX = from.X; resizeFromY = from.Y;
                 resizeStartWidth = Width; resizeStartHeight = Height;
+                pendingWidth = resizeStartWidth; pendingHeight = resizeStartHeight;
                 grip.CaptureMouse(); e.Handled = true;
             };
             grip.MouseMove += delegate(object sender, MouseEventArgs e)
             {
                 if (!resizing) return;
                 var now = WindowsNative.Cursor();
-                Width = Math.Max(MinWidth, Math.Min(maxWidth, resizeStartWidth + (now.X - resizeFromX) / dpi));
-                Height = Math.Max(MinHeight, Math.Min(maxHeight, resizeStartHeight + (now.Y - resizeFromY) / dpi));
+                pendingWidth = Math.Max(MinWidth, Math.Min(maxWidth, resizeStartWidth + (now.X - resizeFromX) / dpi));
+                pendingHeight = Math.Max(MinHeight, Math.Min(maxHeight, resizeStartHeight + (now.Y - resizeFromY) / dpi));
+                if (resizeScheduled) return;
+                resizeScheduled = true;
+                CompositionTarget.Rendering += applyResize;
             };
-            grip.MouseLeftButtonUp += delegate(object sender, MouseButtonEventArgs e) { resizing = false; grip.ReleaseMouseCapture(); e.Handled = true; };
+            grip.MouseLeftButtonUp += delegate(object sender, MouseButtonEventArgs e)
+            {
+                if (resizeScheduled) { CompositionTarget.Rendering -= applyResize; resizeScheduled = false; }
+                resizing = false;
+                Width = pendingWidth; Height = pendingHeight;
+                grip.ReleaseMouseCapture(); e.Handled = true;
+            };
             Grid.SetRow(grip, 3); body.Children.Add(grip);
             SourceInitialized += delegate
             {

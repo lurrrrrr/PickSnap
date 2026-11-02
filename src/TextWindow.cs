@@ -77,6 +77,7 @@ namespace ScreenLine
             Width = 460; Height = 456;
             WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
             AllowsTransparency = true; Background = Brushes.Transparent;
+            LightTheme.SoftwareRender(this);
             ShowInTaskbar = false; Topmost = true;
             FontFamily = new FontFamily("Microsoft YaHei UI"); FontSize = 14;
             UseLayoutRounding = true;

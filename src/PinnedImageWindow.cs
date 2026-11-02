@@ -163,13 +163,11 @@ namespace ScreenLine
         {
             if (returning) return;
             returning = true;
-            PinButton.IsEnabled = false;
-            ToolTipService.SetIsEnabled(PinButton, false);
-            ((ToolTip)PinButton.ToolTip).IsOpen = false;
-            pinLift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-10, TimeSpan.FromSeconds(0.14)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
-            var fade = new DoubleAnimation(0, TimeSpan.FromSeconds(0.14));
-            fade.Completed += delegate { Close(); };
-            PinButton.BeginAnimation(OpacityProperty, fade);
+            // 图钉这块不做任何淡出/过渡：原先先禁用按钮（图钉会瞬间变灰），再主动关掉
+            // ToolTip（原生 ToolTip 关闭自带 Fade 淡出，宿主窗口关掉后残影还会飘一会儿），
+            // 这两处正是点击瞬间和飞回落地时闪一下的来源。现在让图钉保持原样到最后一帧，
+            // 直接关窗由飞行图接管；重复点击由 returning 挡住即可，不需要禁用按钮。
+            Close();
         }
 
         public void UpdateImage()
@@ -262,7 +260,14 @@ namespace ScreenLine
 
         public Rect PhotoRect()
         {
-            return new Rect(Frame.PointToScreen(new Point()), Frame.PointToScreen(new Point(Frame.ActualWidth, Frame.ActualHeight)));
+            // Frame 自带 RenderTransform（起飞缩放、倾斜、拖动抬起）。用 Frame 自己的
+            // PointToScreen 会把这些变换也算进屏幕矩形，返回旋转/缩放后的外接框；挂回时
+            // 飞行窗按这个偏大的矩形起飞，看着就是「点一下突然放大一下」。
+            // 改用不带变换的父 Grid 坐标，取 Frame 的纯布局矩形（含 Margin 偏移）。
+            var surface = (UIElement)Frame.Parent;
+            Point a = surface.PointToScreen(new Point(Frame.Margin.Left, Frame.Margin.Top));
+            Point b = surface.PointToScreen(new Point(Frame.Margin.Left + Frame.ActualWidth, Frame.Margin.Top + Frame.ActualHeight));
+            return new Rect(a, b);
         }
     }
 }

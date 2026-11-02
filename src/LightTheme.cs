@@ -186,9 +186,33 @@ namespace ScreenLine
         public static Color ShadowColor { get { return dark ? Color.FromRgb(0, 0, 0) : Color.FromRgb(38, 57, 76); } }
         public static void Install(Application app)
         {
-            // 小型透明挂件使用软件绘制，避免反复开关面板积累大块图形缓存。
-            RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
+            // 渲染模式不再进程级强制软件：进程级 SoftwareOnly 的优先级高于窗口级设置，
+            // 会把图片篮子、贴图这些大窗口也压进 CPU 渲染，滚动和缩放每帧整窗重画，明显卡顿。
+            // 现在只对反复开关的小型透明挂件逐窗保持软件绘制（见 SoftwareRender/SoftwareRenderMenu），
+            // 避免「反复开关面板积累大块图形缓存」的老问题；其余窗口走默认的硬件渲染。
             app.Resources[typeof(ToolTip)] = styles["Hint"];
+        }
+
+        // 让单个窗口保持软件渲染（构造函数里调用；真正的设置挂在 HWND 建好之后）。
+        public static void SoftwareRender(Window window)
+        {
+            window.SourceInitialized += delegate
+            {
+                var source = PresentationSource.FromVisual(window) as System.Windows.Interop.HwndSource;
+                if (source != null && source.CompositionTarget != null)
+                    source.CompositionTarget.RenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
+            };
+        }
+
+        // 右键菜单、托盘面板这类 ContextMenu 弹在独立 Popup 窗口里，只有打开后才能拿到它的 HwndSource。
+        public static void SoftwareRenderMenu(ContextMenu menu)
+        {
+            menu.Opened += delegate
+            {
+                var source = PresentationSource.FromVisual(menu) as System.Windows.Interop.HwndSource;
+                if (source != null && source.CompositionTarget != null)
+                    source.CompositionTarget.RenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
+            };
         }
 
         public static UIElement CloseIcon()

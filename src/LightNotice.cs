@@ -21,6 +21,7 @@ namespace ScreenLine
             Width = plain ? 300 : 380; SizeToContent = SizeToContent.Height;
             WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
             AllowsTransparency = true; Background = Brushes.Transparent;
+            LightTheme.SoftwareRender(this);
             ShowInTaskbar = false; ShowActivated = false; Topmost = true;
             FontFamily = LightTheme.UiFont;
             LightTheme.Polish(this);

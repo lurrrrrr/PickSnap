@@ -108,6 +108,7 @@ namespace ScreenLine
         {
             Style = (Style)theme["Menu"];
             TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
+            LightTheme.SoftwareRenderMenu(this);
             // 子菜单入场：轻淡入，避免生硬瞬显。
             var entrance = new TranslateTransform();
             RenderTransform = entrance;

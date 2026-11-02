@@ -24,6 +24,13 @@ namespace ScreenLine
         readonly Action landed;
         readonly Func<Rect> basketTarget;
         Rect origin;
+        // 落点在起飞那一刻算一次并固定：绳子若还在滚动/摆动，card.PhotoRect() 的屏幕坐标会变，
+        // 每帧重算会让飞行图追着绳子跑（挂回绳子时看着像绳子抖了一下）。
+        Rect destination;
+        // 时长与抛物线拱高按实际飞行距离缩放：贴图就在绳子下方时不拖沓也不绕远路，
+        // 贴在屏幕另一端时才给足时间和一点弧度。
+        double duration = 0.6;
+        double arc = 30;
         bool completed, arrived;
         public bool Falling { get; private set; }
         public bool Collecting { get { return basketTarget != null; } }
@@ -43,6 +50,7 @@ namespace ScreenLine
             ResizeMode = ResizeMode.NoResize;
             AllowsTransparency = true;
             Background = Brushes.Transparent;
+            LightTheme.SoftwareRender(this);
             ShowActivated = false;
             ShowInTaskbar = false;
             Topmost = true;
@@ -64,6 +72,16 @@ namespace ScreenLine
                 WindowsNative.PassMouse(handle, true);
                 WindowsNative.SetWindowPos(handle, new IntPtr(-1), screen.Bounds.Left, screen.Bounds.Top, screen.Bounds.Width, screen.Bounds.Height, 0x10);
                 this.origin = Local(screenOrigin);
+                if (Falling) duration = 0.55;
+                if (!Falling && !Collecting)
+                {
+                    destination = Local(card.PhotoRect());
+                    double dx = destination.X + destination.Width / 2 - (origin.X + origin.Width / 2);
+                    double dy = destination.Y + destination.Height / 2 - (origin.Y + origin.Height / 2);
+                    double distance = Math.Sqrt(dx * dx + dy * dy);
+                    duration = 0.44 + 0.16 * Math.Min(1, distance / 650);
+                    arc = Math.Min(26, distance * 0.09);
+                }
                 clock.Start();
                 Render(null, EventArgs.Empty);
                 CompositionTarget.Rendering += Render;
@@ -95,46 +113,71 @@ namespace ScreenLine
             if (!Falling && !Collecting && card.IsDisposed) { Close(); return; }
             double seconds = clock.Elapsed.TotalSeconds;
             if (Collecting) { RenderCollection(Math.Min(1, seconds / 0.64)); return; }
-            double progress = Math.Min(1, seconds / (Falling ? 0.55 : 0.65));
+            double progress = Math.Min(1, seconds / duration);
             // 五次曲线让起飞与抵达的速度、加速度都平滑归零。
             double ease = progress * progress * progress * (10 + progress * (-15 + 6 * progress));
-            Rect target = Falling ? origin : Local(card.PhotoRect());
-            double width = origin.Width + (target.Width - origin.Width) * ease;
-            double height = origin.Height + (target.Height - origin.Height) * ease;
-            double x = origin.X + origin.Width / 2 + (target.X + target.Width / 2 - origin.X - origin.Width / 2) * ease;
-            double y = origin.Y + (target.Y - origin.Y) * ease - 30 * Math.Sin(Math.PI * ease);
-            double chrome = Math.Max(0, Math.Min(1, (ease - 0.3) / 0.6));
-            chrome = chrome * chrome * (3 - 2 * chrome);
-            turn.Angle = card.Tilt * ease;
+            Rect target = Falling ? origin : destination;
+            double width, height, x, y, angle, clipOpacity;
             if (Falling)
             {
                 width = origin.Width; height = origin.Height;
                 x = origin.X + width / 2;
                 y = origin.Y + 520 * progress * progress;
-                turn.Angle = card.Tilt + (card.Tilt < 0 ? -32 : 32) * progress * progress;
-                chrome = 1;
+                angle = card.Tilt + (card.Tilt < 0 ? -32 : 32) * progress * progress;
+                clipOpacity = 1;
                 Opacity = 1 - progress * progress;
             }
+            else
+            {
+                width = origin.Width + (target.Width - origin.Width) * ease;
+                height = origin.Height + (target.Height - origin.Height) * ease;
+                x = origin.X + origin.Width / 2 + (target.X + target.Width / 2 - origin.X - origin.Width / 2) * ease;
+                y = origin.Y + (target.Y - origin.Y) * ease - arc * Math.Sin(Math.PI * ease);
+                angle = card.Tilt * ease;
+                // 桌面用的是图钉，挂回绳子才换成晾衣夹：只有夹子在途中渐入。
+                double t = Math.Max(0, Math.Min(1, (ease - 0.12) / 0.7));
+                clipOpacity = t * t * (3 - 2 * t);
+            }
+            turn.Angle = angle;
             frame.Width = border.Width = width;
             frame.Height = border.Height = height;
             Canvas.SetLeft(frame, x - width / 2);
             Canvas.SetTop(frame, y);
             turn.CenterX = width / 2;
             turn.CenterY = -12;
-            border.Background = new SolidColorBrush(Color.FromArgb((byte)(245 * chrome), 255, 255, 255));
-            border.BorderThickness = new Thickness(chrome);
-            border.CornerRadius = new CornerRadius(12 * (Falling ? 1 : ease));
-            photo.Margin = new Thickness(6 * (Falling ? 1 : ease));
-            photo.Clip = new RectangleGeometry(new Rect(0, 0, Math.Max(1, width - photo.Margin.Left * 2 - chrome * 2), Math.Max(1, height - photo.Margin.Top * 2 - chrome * 2)), 7 * (Falling ? 1 : ease), 7 * (Falling ? 1 : ease));
-            shadow.Opacity = 0.2 * chrome;
-            clip.Opacity = chrome;
+            // 白边、圆角、阴影、照片内边距全程保持"挂好"的样子：起飞第一帧就能和桌面贴图
+            // 像素级接上，不再是先融成一张裸图、飞到一半又长出相框。相框颜色从贴图的白
+            // 平滑过渡到绳上卡片的主题色，深色模式下落地也不会突然变色。
+            double blend = Falling ? 1 : ease;
+            border.Background = new SolidColorBrush(Mix(Colors.White, LightTheme.CardColor, blend));
+            border.BorderBrush = new SolidColorBrush(Mix(Color.FromRgb(220, 225, 233), LightTheme.CardEdge, blend));
+            border.BorderThickness = new Thickness(1);
+            border.CornerRadius = new CornerRadius(12);
+            photo.Margin = new Thickness(6);
+            photo.Clip = new RectangleGeometry(new Rect(0, 0, Math.Max(1, width - 14), Math.Max(1, height - 14)), 7, 7);
+            // 阴影模糊从桌面贴图的 16 过渡到绳上卡片的 14：两端各自对齐，交接时轮廓不跳。
+            shadow.BlurRadius = Falling ? 14 : 16 - 2 * blend;
+            shadow.Opacity = 0.2;
+            clip.Opacity = clipOpacity;
             Canvas.SetLeft(clip, width / 2 - 8);
             Canvas.SetTop(clip, -20);
             if (progress < 1) return;
-            Complete();
-            if (Falling) { Close(); return; }
-            Opacity = Math.Max(0, 1 - (seconds - 0.65) / 0.16);
-            if (seconds >= 0.81) Close();
+            // 落地只关窗，不在这里调 Complete()。Close() 之后窗口还要等一次渲染才真正从屏幕
+            // 移除，若此刻就让绳上卡片 Opacity=1，会有一帧「飞行窗 + 卡片」两个不透明窗口叠在
+            // 一起：阴影叠成双份、晾衣夹画了两遍，紧接着飞行窗消失又恢复原样——就是挂上之后
+            // 闪一下的根源。改由 Closed 事件里的 Complete() 在窗口已销毁后接手，全程没有重叠帧。
+            // 也不能用「飞行窗淡出 + 卡片淡入」的交叉过渡：上下叠放的两个窗口 alpha 相乘不互补
+            // （合成 = C·(1-t+t²) + 背景·t(1-t)，t=0.5 时会透出约 25% 背景），中间必然暗一下。
+            Close();
+        }
+
+        static Color Mix(Color from, Color to, double t)
+        {
+            return Color.FromArgb(
+                (byte)(from.A + (to.A - from.A) * t),
+                (byte)(from.R + (to.R - from.R) * t),
+                (byte)(from.G + (to.G - from.G) * t),
+                (byte)(from.B + (to.B - from.B) * t));
         }
 
         void RenderCollection(double progress)
@@ -165,7 +208,9 @@ namespace ScreenLine
             if (progress > 0.68 && Math.Abs(x - endX) < mouth.Width * 0.6)
                 frame.Clip = new RectangleGeometry(new Rect(0, 0, width, Math.Max(0, Math.Min(height, mouth.Y - top))));
             if (progress < 1) return;
-            arrived = true; Complete(); Close();
+            // 同上：等飞行窗真正关掉后，由 Closed 事件里的 Complete() 通知篮子接收，
+            // 避免篮口那一帧同时出现飞行图和落袋后的计数刷新。
+            arrived = true; Close();
         }
     }
 }

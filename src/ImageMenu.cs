@@ -117,6 +117,7 @@ namespace ScreenLine
             Width = 220; FontFamily = LightTheme.UiFont; FontSize = 12;
             Foreground = LightTheme.Brush("#283343"); HasDropShadow = false; SnapsToDevicePixels = true;
             TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
+            LightTheme.SoftwareRenderMenu(this);
             var panel = new StackPanel();
             KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Cycle);
             KeyboardNavigation.SetDirectionalNavigation(panel, KeyboardNavigationMode.Cycle);

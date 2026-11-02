@@ -177,6 +177,7 @@ namespace ScreenLine
             Owner = owner; Title = "图片预览 · 拾帧";
             WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
             AllowsTransparency = true; Background = Brushes.Transparent;
+            LightTheme.SoftwareRender(this);
             ShowInTaskbar = false; ShowActivated = false; Topmost = true; IsHitTestVisible = false;
             body.RenderTransform = entrance; body.RenderTransformOrigin = new Point(0.5, 0.5);
             body.Children.Add(image); body.Children.Add(error);
