@@ -9,6 +9,14 @@ if ($running.Count) { throw '请先从托盘退出拾帧，再重新安装。' }
 if ((Test-Path -LiteralPath $installPath) -and ((Get-Item -LiteralPath $installPath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw '安装目录不能是目录链接。' }
 New-Item -ItemType Directory -Path $installPath -Force | Out-Null
 Copy-Item -Path (Join-Path $sourcePath '*') -Destination $installPath -Recurse -Force
+
+# 卸载时选择「保留数据」的话，data 被暂存在 %LOCALAPPDATA%\PickSnap\Data；
+# 装回时迁入新安装目录，重新启动程序即可继续使用原来的图片和设置。
+$stagedData = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'PickSnap\Data'
+$targetData = Join-Path $installPath 'data'
+if ((Test-Path -LiteralPath $stagedData) -and -not (Test-Path -LiteralPath $targetData)) {
+    Move-Item -LiteralPath $stagedData -Destination $targetData
+}
 $exePath = Join-Path $installPath 'PickSnap.exe'
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'PickSnap.lnk'))

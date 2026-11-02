@@ -698,6 +698,7 @@ namespace ScreenLine
             {
                 if (!first) { WindowsNative.ShowExisting(); return; }
                 instanceMutex = instance;
+                StateStore.AdoptStagedData();
                 var store = new StateStore(StateStore.DefaultRoot);
                 // 首次启动（没有旧配置）自动在桌面放一个快捷方式，之后不再重复；删掉的用户不会被强行加回。
                 if (store.FreshInstall)

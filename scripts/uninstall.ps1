@@ -17,9 +17,36 @@ function Show-Info([string]$text, [string]$icon = 'Information') {
     [System.Windows.Forms.MessageBox]::Show($text, '拾帧 PickSnap', 'OK', $icon) | Out-Null
 }
 
-# 便携运行（没走 Install.cmd）时没有安装目录，不碰注册表和快捷方式，直接说明怎么移除。
+# 便携运行（没走 Install.cmd）时没有安装目录，不碰注册表和快捷方式；
+# 只处理 data 的去留，让「卸载后始终只有一份数据」，其余文件用户删文件夹即可。
 if (-not [string]::Equals([IO.Path]::GetFullPath($PSScriptRoot), $installPath, [StringComparison]::OrdinalIgnoreCase)) {
-    Show-Info ("当前不是通过 Install.cmd 安装的拾帧，没有注册表项和快捷方式需要卸载。`n`n直接删除程序所在文件夹即可彻底移除。`n`n截图与设置就在该文件夹的 data 子目录里，需要保留的话请先备份。")
+    $stagedData = Join-Path $cacheRoot 'Data'
+    $portableData = Join-Path ([IO.Path]::GetFullPath($PSScriptRoot)) 'data'
+    $keep = $Mode -ne 'RemoveAll'
+    if ($Mode -eq 'Ask') {
+        $answer = [System.Windows.Forms.MessageBox]::Show(
+            ("当前是便携运行的拾帧。要保留这个文件夹 data 目录里的图片和设置吗？`n`n是：保留（暂存到系统里，之后用 Install.cmd 安装会自动迁回）`n否：连同图片和设置一起删除，无法恢复"),
+            '图片与设置', 'YesNo', 'Question', 'Button1')
+        $keep = $answer -eq 'Yes'
+    }
+    if ($keep -and (Test-Path -LiteralPath $portableData)) {
+        foreach ($name in @('EditorCache', 'error.log')) {
+            $path = Join-Path $portableData $name
+            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue }
+        }
+        # 旧的暂存只会在「卸载后从未装回」时出现，属于被放弃的上一次暂存，覆盖它。
+        if (Test-Path -LiteralPath $stagedData) { Remove-Item -LiteralPath $stagedData -Recurse -Force -ErrorAction SilentlyContinue }
+        Move-Item -LiteralPath $portableData -Destination $stagedData
+        Show-Info ("图片与设置已暂存到：`n$stagedData`n`n之后用完整安装包里的 Install.cmd 安装，会自动迁回继续使用。`n当前文件夹里剩下的都是程序文件，直接删除整个文件夹即可。")
+    }
+    elseif ($keep) {
+        Show-Info ("这个文件夹的 data 目录不存在（本来就没有收集内容）。`n`n程序文件直接删除整个文件夹即可。")
+    }
+    else {
+        if (Test-Path -LiteralPath $portableData) { Remove-Item -LiteralPath $portableData -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $stagedData) { Remove-Item -LiteralPath $stagedData -Recurse -Force -ErrorAction SilentlyContinue }
+        Show-Info '图片、设置与缓存已删除。当前文件夹里剩下的都是程序文件，直接删除整个文件夹即可。'
+    }
     exit 0
 }
 
@@ -44,7 +71,7 @@ if ($Mode -eq 'Ask') {
 $keepData = $Mode -ne 'RemoveAll'
 if ($Mode -eq 'Ask') {
     $answer = [System.Windows.Forms.MessageBox]::Show(
-        ("是否保留已收集的图片和设置？`n`n是：只删除程序，图片与设置留在 data 目录，重新安装后继续可用（推荐）`n否：连同图片和设置一起删除，无法恢复`n取消：中止卸载"),
+        ("是否保留已收集的图片和设置？`n`n是：只删除程序，图片与设置暂存到系统里，重新安装后自动迁回继续使用（推荐）`n否：连同图片和设置一起删除，无法恢复`n取消：中止卸载"),
         '图片与设置', 'YesNoCancel', 'Warning', 'Button1')
     if ($answer -eq 'Cancel') { exit 0 }
     $keepData = $answer -eq 'Yes'
@@ -81,12 +108,17 @@ if (Test-Path -LiteralPath $shortcutPath) {
 Remove-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'PickSnap' -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\PickSnap' -Recurse -Force -ErrorAction SilentlyContinue
 
-# 更新缓存（下载过的安装包，纯缓存，不属于用户数据），无论保留与否都清掉。
+# 更新缓存（下载过的安装包，纯缓存，不属于用户数据），无论保留与否都清掉；
+# 选择不保留时，连之前卸载暂存的数据也一并清掉，做到真正无残留。
 foreach ($name in @('Updates')) {
     $path = Join-Path $cacheRoot $name
     if (Test-Path -LiteralPath $path) {
         Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
     }
+}
+if (-not $keepData) {
+    $staged = Join-Path $cacheRoot 'Data'
+    if (Test-Path -LiteralPath $staged) { Remove-Item -LiteralPath $staged -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
 function Remove-Everything([string]$path) {
@@ -108,6 +140,7 @@ foreach ($child in @(Get-ChildItem -LiteralPath $installPath -Force)) {
 }
 
 $pictureCount = 0
+$stagedData = Join-Path $cacheRoot 'Data'
 if ($keepData -and (Test-Path -LiteralPath $dataPath)) {
     # data 里唯一可以丢的是编辑器的 WebView2 缓存和错误日志，删掉能省几十 MB，重新打开会自动重建。
     foreach ($name in @('EditorCache', 'error.log')) {
@@ -118,9 +151,13 @@ if ($keepData -and (Test-Path -LiteralPath $dataPath)) {
     if (Test-Path -LiteralPath $captures) {
         $pictureCount = @(Get-ChildItem -LiteralPath $captures -File -ErrorAction SilentlyContinue).Count
     }
+    # 把 data 暂存到系统固定位置（而不是留在安装目录），安装目录就能整个删掉；
+    # 重新运行 Install.cmd 时安装脚本会把它迁回新目录，始终只有这一份数据。
+    if (Test-Path -LiteralPath $stagedData) { Remove-Item -LiteralPath $stagedData -Recurse -Force -ErrorAction SilentlyContinue }
+    Move-Item -LiteralPath $dataPath -Destination $stagedData
 }
 
-# 目录空了就连同外层缓存目录一起收掉；保留数据时目录里还有 data，不能删。
+# 目录空了就连同外层缓存目录一起收掉；保留的数据已暂存到系统里，安装目录也能整个删掉。
 $leftover = @(Get-ChildItem -LiteralPath $installPath -Force -ErrorAction SilentlyContinue).Count
 if ($leftover -eq 0 -and $failed.Count -eq 0) {
     Remove-Item -LiteralPath $installPath -Recurse -Force -ErrorAction SilentlyContinue
@@ -132,8 +169,11 @@ if ($leftover -eq 0 -and $failed.Count -eq 0) {
 if ($failed.Count -gt 0) {
     Show-Info ("拾帧已卸载，但下面这些文件没能删除（可能正被其他程序占用）：`n`n" + ($failed -join "`n") + "`n`n稍后手动删除这个目录即可：`n$installPath") 'Warning'
 }
+elseif ($keepData -and (Test-Path -LiteralPath $stagedData)) {
+    Show-Info ("拾帧已卸载。`n`n图片与设置已保留（共 $pictureCount 张截图），暂存在：`n$stagedData`n`n重新运行 Install.cmd 安装后会自动迁回，继续使用这些内容。`n如果不再需要，直接删除上面这个目录即可。")
+}
 elseif ($keepData) {
-    Show-Info ("拾帧已卸载。`n`n图片与设置已保留（共 $pictureCount 张截图）：`n$dataPath`n`n重新运行 Install.cmd 安装后会自动继续使用这些内容。`n如果不再需要，直接删除上面这个目录即可。")
+    Show-Info '拾帧已卸载。安装目录里没有找到已收集的图片和设置（可能之前卸载时已暂存），重新安装后会自动恢复。'
 }
 else {
     Show-Info '拾帧已卸载，程序、图片、设置和缓存都已删除。'

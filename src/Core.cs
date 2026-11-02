@@ -47,6 +47,29 @@ namespace ScreenLine
     internal sealed class StateStore
     {
         public static string DefaultRoot { get { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data"); } }
+
+        // 卸载时选择「保留数据」的话，卸载脚本会把 data 暂存到 %LOCALAPPDATA%\PickSnap\Data，
+        // 安装目录因此可以整个删掉。这里在标准安装目录启动且自己还没有 data 时把它迁回来，
+        // 保证任何时刻最多只有一份生效的数据：卸载后暂存一份，装回后那一份回到程序里。
+        // 便携运行不领养——便携用户的数据跟着自己的文件夹走。
+        public static void AdoptStagedData()
+        {
+            try
+            {
+                string root = DefaultRoot;
+                if (Directory.Exists(root)) return;
+                string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string install = Path.Combine(local, "Programs", "PickSnap") + "\\";
+                string baseDirectory = Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory);
+                if (!baseDirectory.EndsWith("\\")) baseDirectory += "\\";
+                if (!string.Equals(baseDirectory, install, StringComparison.OrdinalIgnoreCase)) return;
+                string staged = Path.Combine(local, "PickSnap", "Data");
+                if (!Directory.Exists(staged)) return;
+                Directory.Move(staged, root);
+            }
+            catch (Exception) { /* 迁移失败不阻断启动：照常使用自己的（空）data。 */ }
+        }
+
         public readonly string Root;
         public readonly string Inbox;
         public readonly SavedState State;
