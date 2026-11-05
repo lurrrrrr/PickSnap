@@ -16,7 +16,7 @@ namespace ScreenLine
         public LightNotice(string message, int seconds = 5, bool plain = false)
         {
             timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(seconds) };
-            Title = "拾帧提示";
+            Title = "PickSnap 提示";
             AutomationProperties.SetAutomationId(this, "LightNotice");
             Width = plain ? 300 : 380; SizeToContent = SizeToContent.Height;
             WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
@@ -29,7 +29,7 @@ namespace ScreenLine
             if (!plain)
             {
                 var heading = new Grid { Margin = new Thickness(0, 0, 0, 8) };
-                heading.Children.Add(new TextBlock { Text = "PickSnap · 拾帧", FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = LightTheme.Brush("#283343"), VerticalAlignment = VerticalAlignment.Center });
+                heading.Children.Add(new TextBlock { Text = "PickSnap", FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = LightTheme.Brush("#283343"), VerticalAlignment = VerticalAlignment.Center });
                 var close = LightTheme.Button("×", Close, "quiet");
                 close.Width = close.Height = 24; close.MinWidth = 0; close.Padding = new Thickness(0); close.FontSize = 18;
                 close.HorizontalAlignment = HorizontalAlignment.Right;

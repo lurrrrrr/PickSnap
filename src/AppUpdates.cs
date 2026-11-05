@@ -19,9 +19,18 @@ namespace ScreenLine
         public long Size;
     }
 
+    internal enum UpdateCheckPhase { Idle, Checking, Current, Available, Failed }
+    internal sealed class UpdateCheckResult
+    {
+        internal UpdateCheckPhase Phase;
+        internal string Message;
+        internal DateTime CheckedAt;
+        internal UpdateRelease Release;
+    }
+
     internal sealed class AppUpdates : IDisposable
     {
-        // 更新检查指向本项目自己的 Release：查询失败时静默视为「没有新版本」，不打扰用户。
+        // 只读取正式 Release；联网失败与「没有新版本」分别反馈。
         public const string Repository = "https://github.com/lurrrrrr/PickSnap";
         public const string Endpoint = "https://api.github.com/repos/lurrrrrr/PickSnap/releases/latest";
         public static readonly string CurrentVersion = Assembly.GetExecutingAssembly().GetCustomAttributes(typeof(AssemblyInformationalVersionAttribute), false)
@@ -43,14 +52,19 @@ namespace ScreenLine
 
         public async Task<UpdateRelease> CheckAsync(CancellationToken cancellation)
         {
+            LastSeenVersion = null;
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation))
             {
                 timeout.CancelAfter(TimeSpan.FromSeconds(20));
                 using (var response = await client.GetAsync(Endpoint, timeout.Token).ConfigureAwait(false))
                 {
-                    if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
-                    // 之前所有失败都笼统显示「无法连接」，但很多其实是限流：未认证接口每小时 60 次/IP。
-                    if ((int)response.StatusCode == 403) throw new InvalidDataException("GitHub 接口达到访问上限（未登录每小时 60 次），请稍后再试。");
+                    if (response.StatusCode == System.Net.HttpStatusCode.NotFound) throw new InvalidDataException("暂时没有可用更新，请稍后再试。");
+                    if ((int)response.StatusCode == 403 || (int)response.StatusCode == 429)
+                    {
+                        System.Collections.Generic.IEnumerable<string> remaining;
+                        bool limited = (int)response.StatusCode == 429 || response.Headers.TryGetValues("X-RateLimit-Remaining", out remaining) && remaining.Contains("0");
+                        throw new InvalidDataException(limited ? "检查过于频繁，请稍后重试，或从发布页下载。" : "暂时无法检查更新，请稍后重试，或从发布页下载。");
+                    }
                     if (!response.IsSuccessStatusCode) throw new InvalidDataException("GitHub 返回错误 " + (int)response.StatusCode + "，请稍后再试。");
                     string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     string seen;
@@ -74,10 +88,11 @@ namespace ScreenLine
             seenVersion = version;
             if (new Version(version) <= new Version(current)) return null;
             string file = "PickSnap-" + version + "-windows-x64.zip";
-            var asset = (release.assets ?? new AssetData[0]).SingleOrDefault(item => item.name == file);
-            if (asset == null) throw new InvalidDataException("新版本暂未提供 Windows 安装包，请稍后重试。");
+            var matches = (release.assets ?? new AssetData[0]).Where(item => item != null && item.name == file).ToArray();
+            if (matches.Length != 1) throw new InvalidDataException("新版本的 Windows 安装包缺失或重复，请打开发布页确认。");
+            var asset = matches[0];
             string expected = Repository + "/releases/download/" + release.tag_name + "/" + file;
-            if (asset.browser_download_url != expected || asset.size <= 0 || !Regex.IsMatch(asset.digest ?? "", @"^sha256:[a-fA-F0-9]{64}$"))
+            if (asset.browser_download_url != expected || asset.size <= 0 || asset.size > 256L * 1024 * 1024 || !Regex.IsMatch(asset.digest ?? "", @"^sha256:[a-fA-F0-9]{64}$"))
                 throw new InvalidDataException("更新包地址或校验信息无效，请稍后重试。");
             return new UpdateRelease { Version = version, Notes = release.body ?? "", Url = Repository + "/releases/tag/" + release.tag_name,
                 DownloadUrl = expected, Size = asset.size, Sha256 = asset.digest.Substring(7) };
@@ -85,10 +100,13 @@ namespace ScreenLine
 
         public async Task<string> DownloadAsync(UpdateRelease release, IProgress<int> progress, CancellationToken cancellation)
         {
+            var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            timeout.CancelAfter(TimeSpan.FromMinutes(5)); cancellation = timeout.Token;
             string work = Path.Combine(Cache, Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(work);
             try
             {
+                FileRules.AssertPlainTree(Cache, Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+                Directory.CreateDirectory(work);
                 string archive = Path.Combine(work, "update.zip");
                 using (var response = await client.GetAsync(release.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellation).ConfigureAwait(false))
                 {
@@ -104,7 +122,7 @@ namespace ScreenLine
                             total += length;
                             if (total > release.Size) throw new InvalidDataException("更新包大小不符合发布信息。");
                             await output.WriteAsync(buffer, 0, length, cancellation).ConfigureAwait(false);
-                            progress.Report((int)(total * 100 / release.Size));
+                            if (progress != null) progress.Report((int)(total * 100 / release.Size));
                         }
                         if (total != release.Size) throw new InvalidDataException("更新包未下载完整，请重试。");
                     }
@@ -123,21 +141,27 @@ namespace ScreenLine
                 return work;
             }
             catch { Discard(work); throw; }
+            finally { timeout.Dispose(); }
         }
 
         internal static void Extract(string archive, string destination, string version)
         {
             string root = Path.GetFullPath(destination) + Path.DirectorySeparatorChar;
+            FileRules.AssertPlainTree(destination, Path.GetDirectoryName(Path.GetFullPath(destination)));
             using (var zip = ZipFile.OpenRead(archive))
             {
+                if (zip.Entries.Count > 10000) throw new InvalidDataException("更新包文件过多。");
+                long extractedBytes = 0;
                 foreach (var entry in zip.Entries)
                 {
+                    extractedBytes += entry.Length;
+                    if (entry.Length > 128L * 1024 * 1024 || extractedBytes > 512L * 1024 * 1024) throw new InvalidDataException("更新包解压大小超出限制。");
                     string name = entry.FullName.Replace('\\', '/');
                     string file = Path.GetFullPath(Path.Combine(root, name));
                     if (!file.StartsWith(root, StringComparison.OrdinalIgnoreCase) || name.Contains(':'))
                         throw new InvalidDataException("更新包包含无效路径。");
                     if (!name.StartsWith("app/", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (name.StartsWith("app/data/", StringComparison.OrdinalIgnoreCase) || name.StartsWith("app/test-data/", StringComparison.OrdinalIgnoreCase))
+                    if (new[] { "data", "test-data", "preview-data" }.Contains(name.Substring(4).Split('/')[0], StringComparer.OrdinalIgnoreCase))
                         throw new InvalidDataException("更新包不能覆盖用户图片和设置。");
                     if (String.IsNullOrEmpty(entry.Name)) continue;
                     Directory.CreateDirectory(Path.GetDirectoryName(file));
@@ -146,7 +170,8 @@ namespace ScreenLine
             }
             string executable = Path.Combine(root, "app", "PickSnap.exe");
             if (!File.Exists(executable) || FileVersionInfo.GetVersionInfo(executable).ProductVersion != version
-                || !File.Exists(Path.Combine(root, "app", "editor", "index.html")) || !File.Exists(Path.Combine(root, "app", "update.ps1")))
+                || !File.Exists(Path.Combine(root, "app", "editor", "index.html")) || !File.Exists(Path.Combine(root, "app", "update.ps1"))
+                || !File.Exists(Path.Combine(root, "app", "uninstall.ps1")) || !File.Exists(Path.Combine(root, "app", "maintenance-common.ps1")))
                 throw new InvalidDataException("更新包不完整或版本不匹配。");
         }
 
@@ -186,7 +211,7 @@ namespace ScreenLine
         {
             string path = Path.GetFullPath(work);
             if (!path.StartsWith(Path.GetFullPath(Cache) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) return;
-            try { if (Directory.Exists(path)) Directory.Delete(path, true); }
+            try { if (Directory.Exists(path)) { FileRules.AssertPlainTree(path, Cache); Directory.Delete(path, true); } }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
         }
@@ -198,12 +223,13 @@ namespace ScreenLine
             try
             {
                 if (!Directory.Exists(Cache)) return;
+                FileRules.AssertPlainTree(Cache, Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
                 foreach (var directory in Directory.GetDirectories(Cache))
                 {
                     try
                     {
                         if (DateTime.UtcNow - Directory.GetLastWriteTimeUtc(directory) < TimeSpan.FromHours(12)) continue;
-                        Directory.Delete(directory, true);
+                        FileRules.AssertPlainTree(directory, Cache); Directory.Delete(directory, true);
                     }
                     catch (IOException) { }
                     catch (UnauthorizedAccessException) { }

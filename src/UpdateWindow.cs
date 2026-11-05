@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -65,54 +65,6 @@ namespace ScreenLine
             }
         }
 
-        // 手动检查更新失败：气泡提示说不清原因也无处可点，改用小窗说明具体原因，
-        // 并给出直接打开 GitHub 下载页的入口，用户不至于被网络问题卡住又找不到安装包。
-        static Window checkFailedWindow;
-
-        public static void ShowCheckFailed(Exception error, string currentVersion)
-        {
-            if (checkFailedWindow != null) { checkFailedWindow.Activate(); return; }
-            string reason;
-            if (error is OperationCanceledException) reason = "连接 GitHub 超时（等待 20 秒无响应），请检查网络或代理设置后重试。";
-            else reason = string.IsNullOrEmpty(error.Message) ? "网络连接失败，请稍后重试。" : error.Message;
-
-            var window = new Window {
-                Title = "检查更新", Width = 430, SizeToContent = SizeToContent.Height,
-                WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize,
-                AllowsTransparency = true, Background = Brushes.Transparent,
-                ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.CenterScreen,
-                FontFamily = LightTheme.UiFont, UseLayoutRounding = true
-            };
-            var body = new StackPanel();
-            body.Children.Add(new TextBlock { Text = "检查更新失败", FontSize = 17, FontWeight = FontWeights.SemiBold, Foreground = LightTheme.Brush("#283343") });
-            body.Children.Add(new TextBlock { Text = reason, FontSize = 13, LineHeight = 21, TextWrapping = TextWrapping.Wrap, Foreground = LightTheme.Brush("#343D49"), Margin = new Thickness(0, 10, 0, 0) });
-            // 说清边界：请求失败只代表「没查到线上版本」，与本地版本新旧无关，
-            // 免得已经装了最新版的用户误以为程序坏了或版本有问题。
-            body.Children.Add(new TextBlock { Text = "你当前是 v" + currentVersion + "；本次只是没能查到线上版本，不代表有新版本。", FontSize = 13, LineHeight = 21, TextWrapping = TextWrapping.Wrap, Foreground = LightTheme.Brush("#343D49"), Margin = new Thickness(0, 4, 0, 0) });
-            body.Children.Add(new TextBlock { Text = "也可以直接到 GitHub 下载最新版安装包，已收集的图片和设置不受影响。", FontSize = 13, LineHeight = 21, TextWrapping = TextWrapping.Wrap, Foreground = LightTheme.Brush("#65717F"), Margin = new Thickness(0, 4, 0, 0) });
-            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 18, 0, 0) };
-            var open = LightTheme.Button("打开下载页", delegate {
-                try { Process.Start(new ProcessStartInfo(AppUpdates.Repository + "/releases/latest") { UseShellExecute = true }); } catch { }
-                window.Close();
-            }, "primary");
-            var close = LightTheme.Button("关闭", window.Close, "quiet");
-            // 固定宽高而非只给 MinWidth：样式里的 MinWidth 只保底，文字多的「打开下载页」
-            // 会把自己撑宽、「关闭」则停在最小值，两个按钮看起来就不一样大。
-            // 这里锁成同一套尺寸，主次只靠配色区分。
-            open.Width = close.Width = 112;
-            open.Height = close.Height = 34;
-            open.Padding = close.Padding = new Thickness(14, 0, 14, 0);
-            open.Margin = new Thickness(0, 0, 8, 0);
-            buttons.Children.Add(open);
-            buttons.Children.Add(close);
-            body.Children.Add(buttons);
-            var card = LightTheme.Card(body); card.Padding = new Thickness(24);
-            window.Content = card;
-            window.Closed += delegate { checkFailedWindow = null; };
-            checkFailedWindow = window;
-            window.Show();
-        }
-
         readonly CancellationTokenSource cancellation = new CancellationTokenSource();
         readonly TextBlock status = new TextBlock { Foreground = LightTheme.Brush("#65717F"), FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 14, 0, 8) };
         readonly ProgressBar progress = new ProgressBar { Height = 5, Minimum = 0, Maximum = 100, Visibility = Visibility.Collapsed, Margin = new Thickness(0, 0, 0, 16) };
@@ -120,13 +72,13 @@ namespace ScreenLine
         string downloaded;
         bool busy, handingOff;
 
-        public UpdateWindow(UpdateRelease release, AppUpdates updates, Func<string, Task<bool>> apply, Action skip = null)
+        public UpdateWindow(UpdateRelease release, AppUpdates updates, Func<string, Task<bool>> apply, Action skip = null, Func<Task<bool>> prepare = null)
         {
-            Title = "更新拾帧"; Width = 520; SizeToContent = SizeToContent.Height;
+            Title = "更新 PickSnap"; Width = 560; SizeToContent = SizeToContent.Height;
             WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
             AllowsTransparency = true; Background = Brushes.Transparent;
             ShowInTaskbar = false; WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            FontFamily = new FontFamily("Microsoft YaHei UI"); UseLayoutRounding = true;
+            FontFamily = new FontFamily("Segoe UI, Microsoft YaHei"); UseLayoutRounding = true;
             AutomationProperties.SetAutomationId(this, "AppUpdate");
             var body = new StackPanel();
             var heading = new Grid();
@@ -142,7 +94,7 @@ namespace ScreenLine
                 body.Children.Add(new Border {
                     Background = LightTheme.Brush("#FCF3E2"), CornerRadius = new CornerRadius(7),
                     Padding = new Thickness(12, 9, 12, 9), Margin = new Thickness(0, 0, 0, 14),
-                    Child = new TextBlock { Text = "看起来你是直接在压缩包里运行拾帧。请先把压缩包解压到固定文件夹，运行其中的 Install.cmd 完成安装，再从这里更新。",
+                    Child = new TextBlock { Text = "看起来你是直接在压缩包里运行 PickSnap。请先把压缩包解压到固定文件夹，运行其中的 Install.cmd 完成安装，再从这里更新。",
                         FontSize = 12.5, LineHeight = 20, TextWrapping = TextWrapping.Wrap, Foreground = LightTheme.Brush("#9A6B1F") }
                 });
             }
@@ -150,13 +102,15 @@ namespace ScreenLine
                 ? (UIElement)new TextBlock { Text = "新版本已准备好。", FontSize = 13, LineHeight = 22, TextWrapping = TextWrapping.Wrap, Foreground = LightTheme.Brush("#343D49") }
                 : NotesView(release.Notes);
             body.Children.Add(new ScrollViewer { MaxHeight = 220, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = notesContent });
-            status.Text = "下载完成后重启更新，保留图片和设置。"; body.Children.Add(status); body.Children.Add(progress);
-            var actions = new Grid { Margin = new Thickness(0, 4, 0, 0) };
+            status.Text = "更新完成后会自动重新打开，图片、文字和设置保留。"; body.Children.Add(status); body.Children.Add(progress);
+            var actions = new Grid { Margin = new Thickness(0, 12, 0, 0) };
+            actions.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            actions.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             if (skip != null)
             {
                 // 跳过此版本：只影响自动检查的提醒，手动检查仍然可以看到这个版本。
                 var details = LightTheme.Button("查看发布说明", delegate { Process.Start(new ProcessStartInfo(release.Url) { UseShellExecute = true }); }, "quiet");
-                var skipButton = LightTheme.Button("跳过此版本", delegate { skip(); Close(); }, "quiet");
+                var skipButton = LightTheme.Button("跳过此版本", delegate { try { skip(); Close(); } catch (Exception error) { status.Text = "跳过设置保存失败：" + error.Message; } }, "quiet");
                 skipButton.Margin = new Thickness(14, 0, 0, 0);
                 var lefts = new StackPanel { Orientation = Orientation.Horizontal };
                 lefts.Children.Add(details); lefts.Children.Add(skipButton);
@@ -167,10 +121,11 @@ namespace ScreenLine
                 var details = LightTheme.Button("查看发布说明", delegate { Process.Start(new ProcessStartInfo(release.Url) { UseShellExecute = true }); }, "quiet");
                 details.HorizontalAlignment = HorizontalAlignment.Left; actions.Children.Add(details);
             }
-            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
+            Grid.SetRow(buttons, 1);
             var later = LightTheme.Button("稍后再说", Close, "quiet"); later.Margin = new Thickness(0, 0, 8, 0); buttons.Children.Add(later);
-            install = LightTheme.Button("下载并安装", delegate { }, "primary"); buttons.Children.Add(install);
-            AutomationProperties.SetName(install, "下载并安装更新");
+            install = LightTheme.Button("更新并重启", delegate { }, "primary"); buttons.Children.Add(install);
+            AutomationProperties.SetName(install, "下载更新并自动重启安装");
             if (AppUpdates.RunsFromTemporaryFolder()) install.IsEnabled = false;
             install.Click += async delegate
             {
@@ -180,8 +135,9 @@ namespace ScreenLine
                 {
                     if (downloaded == null)
                     {
-                        progress.Visibility = Visibility.Visible; status.Text = "正在下载更新…"; later.Content = "取消";
-                        downloaded = await updates.DownloadAsync(release, new Progress<int>(delegate(int percent) { progress.Value = percent; status.Text = percent < 100 ? "正在下载更新 " + percent + "%" : "正在校验安装包…"; }), cancellation.Token);
+                        if (prepare != null && !await prepare()) { status.Text = "请先完成图片编辑，再继续更新。"; return; }
+                        progress.Visibility = Visibility.Visible; status.Text = "正在下载更新…"; later.Content = "取消下载";
+                        downloaded = await updates.DownloadAsync(release, new Progress<int>(delegate(int percent) { if (cancellation.IsCancellationRequested || !IsVisible || downloaded != null || !busy || handingOff) return; progress.Value = percent; status.Text = percent < 100 ? "正在下载更新 " + percent + "%" : "正在校验安装包…"; }), cancellation.Token);
                     }
                     cancellation.Token.ThrowIfCancellationRequested();
                     handingOff = true; later.IsEnabled = close.IsEnabled = false;
@@ -189,16 +145,17 @@ namespace ScreenLine
                     if (!await apply(downloaded))
                     {
                         handingOff = false; status.Text = "更新包已下载，完成图片编辑后可继续安装。";
-                        install.Content = "重启并安装";
+                        install.Content = "继续更新";
                     }
                 }
-                catch (OperationCanceledException) { if (IsVisible) status.Text = "下载已取消。"; }
+                catch (OperationCanceledException) { if (IsVisible) status.Text = "下载已取消或超时，请重试。"; }
                 catch (Exception error) { handingOff = false; status.Text = "更新未完成：" + error.Message; install.Content = downloaded == null ? "重试下载" : "重试安装"; }
-                finally { busy = false; install.IsEnabled = true; later.IsEnabled = close.IsEnabled = true; later.Content = "稍后"; if (!IsVisible && !handingOff && downloaded != null) AppUpdates.Discard(downloaded); }
+                finally { busy = false; install.IsEnabled = !AppUpdates.RunsFromTemporaryFolder(); later.IsEnabled = close.IsEnabled = true; later.Content = "稍后再说"; if (!IsVisible && !handingOff && downloaded != null) AppUpdates.Discard(downloaded); }
             };
             actions.Children.Add(buttons); body.Children.Add(actions);
-            var card = LightTheme.Card(body); card.Padding = new Thickness(24); Content = card;
+            var card = LightTheme.Card(body); card.Padding = new Thickness(24); LightTheme.FitDialog(this, card);
             Closed += delegate { cancellation.Cancel(); if (!handingOff && downloaded != null) AppUpdates.Discard(downloaded); };
+            Closing += delegate(object sender, System.ComponentModel.CancelEventArgs e) { if (handingOff) e.Cancel = true; };
         }
     }
 }

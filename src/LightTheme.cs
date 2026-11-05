@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -114,14 +114,14 @@ namespace ScreenLine
         const string sheet = @"
 <ResourceDictionary xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
   <Style x:Key='Action' TargetType='Button'>
-    <Setter Property='FontFamily' Value='Microsoft YaHei UI'/><Setter Property='FontSize' Value='13'/>
+    <Setter Property='FontFamily' Value='Microsoft YaHei'/><Setter Property='FontSize' Value='13'/>
     <Setter Property='Foreground' Value='#343D49'/><Setter Property='Background' Value='#FFFFFF'/>
     <Setter Property='BorderBrush' Value='#DCE2EA'/><Setter Property='BorderThickness' Value='1'/>
-    <Setter Property='Padding' Value='14,0'/><Setter Property='Height' Value='34'/><Setter Property='MinWidth' Value='80'/>
-    <Setter Property='Cursor' Value='Hand'/><Setter Property='FocusVisualStyle' Value='{x:Null}'/>
+    <Setter Property='Padding' Value='16,0'/><Setter Property='Height' Value='36'/><Setter Property='MinWidth' Value='96'/>
+    <Setter Property='HorizontalContentAlignment' Value='Center'/><Setter Property='VerticalContentAlignment' Value='Center'/><Setter Property='Cursor' Value='Hand'/><Setter Property='FocusVisualStyle' Value='{x:Null}'/>
     <Setter Property='Template'><Setter.Value><ControlTemplate TargetType='Button'>
       <Border x:Name='Surface' CornerRadius='7' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}'>
-        <ContentPresenter Margin='{TemplateBinding Padding}' HorizontalAlignment='Center' VerticalAlignment='Center' RecognizesAccessKey='True'/>
+        <ContentPresenter Margin='{TemplateBinding Padding}' HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalAlignment='{TemplateBinding VerticalContentAlignment}' RecognizesAccessKey='True'/>
       </Border>
       <ControlTemplate.Triggers>
         <Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Surface' Property='Background' Value='#F0F2F5'/></Trigger>
@@ -129,9 +129,11 @@ namespace ScreenLine
         <Trigger Property='Tag' Value='primary'><Setter Property='Background' Value='#2463AE'/><Setter Property='BorderBrush' Value='#2463AE'/><Setter Property='Foreground' Value='White'/><Setter Property='FontWeight' Value='SemiBold'/></Trigger>
         <MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='primary'/><Condition Property='IsEnabled' Value='True'/><Condition Property='IsMouseOver' Value='True'/></MultiTrigger.Conditions><Setter TargetName='Surface' Property='Background' Value='#3070C2'/><Setter TargetName='Surface' Property='BorderBrush' Value='#3070C2'/></MultiTrigger>
         <MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='primary'/><Condition Property='IsEnabled' Value='True'/><Condition Property='IsPressed' Value='True'/></MultiTrigger.Conditions><Setter TargetName='Surface' Property='Background' Value='#173F6F'/><Setter TargetName='Surface' Property='BorderBrush' Value='#173F6F'/><Setter Property='Foreground' Value='#C9DCF5'/></MultiTrigger>
-        <Trigger Property='Tag' Value='danger'><Setter Property='Background' Value='#B5433E'/><Setter Property='BorderBrush' Value='#B5433E'/><Setter Property='Foreground' Value='White'/><Setter Property='FontWeight' Value='SemiBold'/></Trigger>
-        <MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='danger'/><Condition Property='IsEnabled' Value='True'/><Condition Property='IsMouseOver' Value='True'/></MultiTrigger.Conditions><Setter TargetName='Surface' Property='Background' Value='#C4574F'/><Setter TargetName='Surface' Property='BorderBrush' Value='#C4574F'/></MultiTrigger>
-        <MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='danger'/><Condition Property='IsEnabled' Value='True'/><Condition Property='IsPressed' Value='True'/></MultiTrigger.Conditions><Setter TargetName='Surface' Property='Background' Value='#8C2E28'/><Setter TargetName='Surface' Property='BorderBrush' Value='#8C2E28'/><Setter Property='Foreground' Value='#F2D3CF'/></MultiTrigger>
+        <Trigger Property='Tag' Value='danger'><Setter Property='Background' Value='#FFFFFF'/><Setter Property='BorderBrush' Value='#D5DDE6'/><Setter Property='Foreground' Value='#B74E4A'/></Trigger>
+        <MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='danger'/><Condition Property='IsEnabled' Value='True'/><Condition Property='IsMouseOver' Value='True'/></MultiTrigger.Conditions><Setter TargetName='Surface' Property='Background' Value='#FFF0ED'/><Setter TargetName='Surface' Property='BorderBrush' Value='#B74E4A'/></MultiTrigger>
+        <MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='danger'/><Condition Property='IsEnabled' Value='True'/><Condition Property='IsPressed' Value='True'/></MultiTrigger.Conditions><Setter TargetName='Surface' Property='Background' Value='#F9E2DF'/><Setter Property='Foreground' Value='#B74E4A'/></MultiTrigger>
+        <Trigger Property='Tag' Value='danger-primary'><Setter Property='Background' Value='#B5433E'/><Setter Property='BorderBrush' Value='#B5433E'/><Setter Property='Foreground' Value='White'/><Setter Property='FontWeight' Value='SemiBold'/></Trigger>
+        <MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='danger-primary'/><Condition Property='IsEnabled' Value='True'/><Condition Property='IsMouseOver' Value='True'/></MultiTrigger.Conditions><Setter TargetName='Surface' Property='Background' Value='#C4574F'/><Setter TargetName='Surface' Property='BorderBrush' Value='#C4574F'/></MultiTrigger>
         <Trigger Property='Tag' Value='select'><Setter Property='Background' Value='#FFFFFF'/><Setter Property='BorderBrush' Value='#D5DDE6'/><Setter Property='Foreground' Value='#343D49'/></Trigger>
         <MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='select'/><Condition Property='IsMouseOver' Value='True'/></MultiTrigger.Conditions><Setter TargetName='Surface' Property='Background' Value='#E4EEFB'/><Setter TargetName='Surface' Property='BorderBrush' Value='#7FA6D6'/><Setter Property='Foreground' Value='#1E549B'/></MultiTrigger>
         <MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='select'/><Condition Property='IsPressed' Value='True'/></MultiTrigger.Conditions><Setter TargetName='Surface' Property='Background' Value='#CFE1F5'/><Setter TargetName='Surface' Property='BorderBrush' Value='#5E8EC4'/><Setter Property='Foreground' Value='#17497F'/></MultiTrigger>
@@ -139,14 +141,87 @@ namespace ScreenLine
         <MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='select-on'/><Condition Property='IsEnabled' Value='True'/><Condition Property='IsMouseOver' Value='True'/></MultiTrigger.Conditions><Setter TargetName='Surface' Property='Background' Value='#3070C2'/><Setter TargetName='Surface' Property='BorderBrush' Value='#3070C2'/></MultiTrigger>
         <MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='select-on'/><Condition Property='IsEnabled' Value='True'/><Condition Property='IsPressed' Value='True'/></MultiTrigger.Conditions><Setter TargetName='Surface' Property='Background' Value='#173F6F'/><Setter TargetName='Surface' Property='BorderBrush' Value='#173F6F'/></MultiTrigger>
         <Trigger Property='Tag' Value='quiet'><Setter Property='BorderBrush' Value='Transparent'/><Setter Property='Background' Value='Transparent'/></Trigger>
+        <Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Surface' Property='BorderBrush' Value='#6E97CB'/><Setter TargetName='Surface' Property='BorderThickness' Value='2'/></Trigger>
         <Trigger Property='IsEnabled' Value='False'><Setter TargetName='Surface' Property='Opacity' Value='0.45'/><Setter Property='Cursor' Value='Arrow'/></Trigger>
         <MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='primary'/><Condition Property='IsEnabled' Value='False'/></MultiTrigger.Conditions><Setter TargetName='Surface' Property='Opacity' Value='1'/><Setter TargetName='Surface' Property='Background' Value='#E3EDF8'/><Setter TargetName='Surface' Property='BorderBrush' Value='#C9DBEF'/><Setter Property='Foreground' Value='#88A6CB'/></MultiTrigger>
-        <MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='danger'/><Condition Property='IsEnabled' Value='False'/></MultiTrigger.Conditions><Setter TargetName='Surface' Property='Opacity' Value='1'/><Setter TargetName='Surface' Property='Background' Value='#F9E2DF'/><Setter TargetName='Surface' Property='BorderBrush' Value='#ECC5C0'/><Setter Property='Foreground' Value='#D49A93'/></MultiTrigger>
+        <MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='danger-primary'/><Condition Property='IsEnabled' Value='False'/></MultiTrigger.Conditions><Setter TargetName='Surface' Property='Opacity' Value='1'/><Setter TargetName='Surface' Property='Background' Value='#F9E2DF'/><Setter TargetName='Surface' Property='BorderBrush' Value='#ECC5C0'/><Setter Property='Foreground' Value='#B74E4A'/></MultiTrigger>
+        <MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='danger'/><Condition Property='IsEnabled' Value='False'/></MultiTrigger.Conditions><Setter TargetName='Surface' Property='Opacity' Value='1'/><Setter TargetName='Surface' Property='Background' Value='#F1F4F8'/><Setter TargetName='Surface' Property='BorderBrush' Value='#DCE2EA'/><Setter Property='Foreground' Value='#8390A1'/></MultiTrigger>
       </ControlTemplate.Triggers>
     </ControlTemplate></Setter.Value></Setter>
   </Style>
+  <Style x:Key='LinkAction' TargetType='Button'>
+    <Setter Property='FontFamily' Value='Microsoft YaHei'/><Setter Property='HorizontalContentAlignment' Value='Center'/><Setter Property='VerticalContentAlignment' Value='Center'/>
+    <Setter Property='Foreground' Value='#2463AE'/><Setter Property='Background' Value='Transparent'/><Setter Property='BorderThickness' Value='0'/><Setter Property='Height' Value='36'/><Setter Property='MinWidth' Value='0'/><Setter Property='Padding' Value='10,0'/><Setter Property='FontSize' Value='13'/><Setter Property='Cursor' Value='Hand'/>
+    <Setter Property='Template'><Setter.Value><ControlTemplate TargetType='Button'>
+      <Border x:Name='Surface' Background='{TemplateBinding Background}' CornerRadius='6'><ContentPresenter Margin='{TemplateBinding Padding}' HorizontalAlignment='Center' VerticalAlignment='Center'/></Border>
+      <ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Surface' Property='Background' Value='#EDF4FF'/></Trigger><Trigger Property='IsPressed' Value='True'><Setter TargetName='Surface' Property='Background' Value='#D6E4F7'/></Trigger><Trigger Property='Tag' Value='danger'><Setter Property='Foreground' Value='#B74E4A'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='.5'/></Trigger></ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key='Selection' TargetType='CheckBox'>
+    <Setter Property='Foreground' Value='#343D49'/><Setter Property='FontSize' Value='13'/><Setter Property='Cursor' Value='Hand'/><Setter Property='Padding' Value='8,0'/><Setter Property='MinHeight' Value='36'/>
+    <Setter Property='Template'><Setter.Value><ControlTemplate TargetType='CheckBox'>
+      <Grid Background='Transparent'><Grid.ColumnDefinitions><ColumnDefinition Width='20'/><ColumnDefinition Width='Auto'/></Grid.ColumnDefinitions>
+        <Border x:Name='Box' Width='17' Height='17' CornerRadius='4' Background='#FFFFFF' BorderBrush='#B8C2D0' BorderThickness='1' VerticalAlignment='Center'/>
+        <Path x:Name='Check' Data='M4,8 L7,11 L13,5' Width='17' Height='17' VerticalAlignment='Center' Stroke='White' StrokeThickness='1.7' Visibility='Collapsed'/>
+        <ContentPresenter Grid.Column='1' Margin='{TemplateBinding Padding}' VerticalAlignment='Center'/>
+      </Grid><ControlTemplate.Triggers><Trigger Property='IsChecked' Value='True'><Setter TargetName='Box' Property='Background' Value='#2463AE'/><Setter TargetName='Box' Property='BorderBrush' Value='#2463AE'/><Setter TargetName='Check' Property='Visibility' Value='Visible'/></Trigger><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Box' Property='BorderBrush' Value='#2463AE'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='.45'/></Trigger></ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key='NavigationItem' TargetType='ListBoxItem'>
+    <Setter Property='FocusVisualStyle'><Setter.Value><Style TargetType='Control'><Setter Property='Template'><Setter.Value><ControlTemplate><Border BorderBrush='#6E97CB' BorderThickness='1' CornerRadius='5'/></ControlTemplate></Setter.Value></Setter></Style></Setter.Value></Setter>
+    <Setter Property='Foreground' Value='#343D49'/><Setter Property='HorizontalContentAlignment' Value='Stretch'/><Setter Property='VerticalContentAlignment' Value='Center'/><Setter Property='Height' Value='48'/><Setter Property='Margin' Value='0,3'/><Setter Property='Padding' Value='12,0'/>
+    <Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ListBoxItem'>
+      <Border x:Name='Surface' Background='Transparent' CornerRadius='5'>
+        <Grid><ContentPresenter Margin='{TemplateBinding Padding}' HorizontalAlignment='Stretch' VerticalAlignment='Center'/></Grid>
+      </Border><ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Surface' Property='Background' Value='#E8EDF3'/></Trigger><Trigger Property='IsSelected' Value='True'><Setter TargetName='Surface' Property='Background' Value='#E7EEF8'/><Setter Property='FontWeight' Value='SemiBold'/><Setter Property='Foreground' Value='#2463AE'/></Trigger></ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key='Switch' TargetType='CheckBox'>
+    <Setter Property='Width' Value='44'/><Setter Property='Height' Value='28'/><Setter Property='Cursor' Value='Hand'/>
+    <Setter Property='FocusVisualStyle'><Setter.Value><Style TargetType='Control'><Setter Property='Template'><Setter.Value><ControlTemplate><Border BorderBrush='#6E97CB' BorderThickness='1' CornerRadius='5' Margin='-1'/></ControlTemplate></Setter.Value></Setter></Style></Setter.Value></Setter>
+    <Setter Property='Template'><Setter.Value><ControlTemplate TargetType='CheckBox'>
+      <Border x:Name='Focus' Background='Transparent' CornerRadius='14' BorderBrush='Transparent' BorderThickness='2'>
+        <Border x:Name='Track' Width='36' Height='20' Background='#B8C2D0' CornerRadius='10'>
+          <Ellipse x:Name='Thumb' Fill='White' Width='14' Height='14' HorizontalAlignment='Left' Margin='3,0,3,0'><Ellipse.RenderTransform><TranslateTransform x:Name='Slide'/></Ellipse.RenderTransform></Ellipse>
+        </Border>
+      </Border>
+      <ControlTemplate.Triggers>
+        <Trigger Property='IsChecked' Value='True'><Setter TargetName='Track' Property='Background' Value='#2463AE'/>
+        </Trigger>
+        <Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='0.45'/></Trigger>
+      </ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key='Field' TargetType='TextBox'><Setter Property='FocusVisualStyle' Value='{x:Null}'/>
+    <Setter Property='FontFamily' Value='Segoe UI, Microsoft YaHei'/><Setter Property='FontSize' Value='13'/><Setter Property='Foreground' Value='#283343'/><Setter Property='Background' Value='#FFFFFF'/><Setter Property='BorderBrush' Value='#DCE2EA'/><Setter Property='BorderThickness' Value='1'/><Setter Property='Padding' Value='12,7'/>
+    <Setter Property='Template'><Setter.Value><ControlTemplate TargetType='TextBox'><Border x:Name='Edge' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='7'><ScrollViewer x:Name='PART_ContentHost' Margin='{TemplateBinding Padding}'/></Border><ControlTemplate.Triggers><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Edge' Property='BorderBrush' Value='#6E97CB'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='0.5'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key='Choice' TargetType='ComboBox'>
+    <Setter Property='FocusVisualStyle' Value='{x:Null}'/>
+    <Setter Property='Foreground' Value='#283343'/><Setter Property='Background' Value='#FFFFFF'/><Setter Property='BorderBrush' Value='#DCE2EA'/><Setter Property='FontFamily' Value='Segoe UI, Microsoft YaHei'/><Setter Property='FontSize' Value='13'/><Setter Property='Padding' Value='12,0'/><Setter Property='HorizontalContentAlignment' Value='Stretch'/>
+    <Setter Property='ItemContainerStyle'><Setter.Value><Style TargetType='ComboBoxItem'><Setter Property='FocusVisualStyle' Value='{x:Null}'/><Setter Property='Padding' Value='12,8'/><Setter Property='Foreground' Value='#283343'/></Style></Setter.Value></Setter>
+    <Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ComboBox'>
+      <Grid><Border x:Name='Edge' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='1' CornerRadius='7'/>
+        <ContentPresenter Margin='12,0,30,0' VerticalAlignment='Center' Content='{TemplateBinding SelectionBoxItem}' ContentTemplate='{TemplateBinding SelectionBoxItemTemplate}' IsHitTestVisible='False'/>
+        <ToggleButton IsChecked='{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}' Focusable='False' Background='Transparent'><ToggleButton.Template><ControlTemplate TargetType='ToggleButton'><Border Background='Transparent'><Path Data='M0,0 L4,4 L8,0' Width='8' Height='4' Stroke='#65717F' StrokeThickness='1.3' HorizontalAlignment='Right' VerticalAlignment='Center' Margin='0,0,12,0'/></Border></ControlTemplate></ToggleButton.Template></ToggleButton>
+        <Popup x:Name='PART_Popup' IsOpen='{TemplateBinding IsDropDownOpen}' Placement='Bottom' AllowsTransparency='True' Focusable='False' PopupAnimation='Fade'><Border Background='#FFFFFF' BorderBrush='#DCE2EA' BorderThickness='1' CornerRadius='7' MinWidth='{TemplateBinding ActualWidth}' Padding='4' Margin='0,4,0,0'><ScrollViewer MaxHeight='260' CanContentScroll='True'><ItemsPresenter KeyboardNavigation.DirectionalNavigation='Contained'/></ScrollViewer></Border></Popup>
+      </Grid><ControlTemplate.Triggers><Trigger Property='IsKeyboardFocusWithin' Value='True'><Setter TargetName='Edge' Property='BorderBrush' Value='#6E97CB'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='0.5'/></Trigger></ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key='Scroll' TargetType='ScrollBar'>
+    <Setter Property='Width' Value='12'/><Setter Property='Background' Value='Transparent'/>
+    <Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ScrollBar'>
+      <Grid Background='{TemplateBinding Background}'><Track x:Name='PART_Track' Orientation='{TemplateBinding Orientation}' IsDirectionReversed='True'>
+        <Track.DecreaseRepeatButton><RepeatButton x:Name='PageBefore' Command='ScrollBar.PageUpCommand' Focusable='False'><RepeatButton.Template><ControlTemplate TargetType='RepeatButton'><Border Background='Transparent'/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
+        <Track.Thumb><Thumb x:Name='ScrollThumb' MinHeight='24'><Thumb.Template><ControlTemplate TargetType='Thumb'><Border x:Name='Grip' Background='#B8C2D0' CornerRadius='4' Margin='3,2'/><ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Grip' Property='Background' Value='#8390A1'/></Trigger><Trigger Property='IsDragging' Value='True'><Setter TargetName='Grip' Property='Background' Value='#65717F'/></Trigger></ControlTemplate.Triggers></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+        <Track.IncreaseRepeatButton><RepeatButton x:Name='PageAfter' Command='ScrollBar.PageDownCommand' Focusable='False'><RepeatButton.Template><ControlTemplate TargetType='RepeatButton'><Border Background='Transparent'/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>
+      </Track></Grid>
+      <ControlTemplate.Triggers><Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='0'/></Trigger><Trigger Property='Orientation' Value='Horizontal'><Setter TargetName='PART_Track' Property='IsDirectionReversed' Value='False'/><Setter TargetName='PageBefore' Property='Command' Value='ScrollBar.PageLeftCommand'/><Setter TargetName='PageAfter' Property='Command' Value='ScrollBar.PageRightCommand'/><Setter TargetName='ScrollThumb' Property='MinHeight' Value='0'/><Setter TargetName='ScrollThumb' Property='MinWidth' Value='24'/></Trigger></ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+    <Style.Triggers><Trigger Property='Orientation' Value='Horizontal'><Setter Property='Width' Value='Auto'/><Setter Property='Height' Value='12'/></Trigger></Style.Triggers>
+  </Style>
   <Style x:Key='Hint' TargetType='ToolTip'>
-    <Setter Property='FontFamily' Value='Microsoft YaHei UI'/><Setter Property='FontSize' Value='12'/><Setter Property='Foreground' Value='#536172'/>
+    <Setter Property='FontFamily' Value='Segoe UI, Microsoft YaHei'/><Setter Property='FontSize' Value='12'/><Setter Property='Foreground' Value='#536172'/>
     <Setter Property='MaxWidth' Value='320'/><Setter Property='HasDropShadow' Value='False'/>
     <Setter Property='Template'><Setter.Value><ControlTemplate TargetType='ToolTip'>
       <Border Background='#FFFFFF' BorderBrush='#E0E4EA' BorderThickness='1' CornerRadius='7' Padding='10,7' Margin='8'>
@@ -158,13 +233,29 @@ namespace ScreenLine
 </ResourceDictionary>";
 
         static readonly ResourceDictionary lightStyles = (ResourceDictionary)XamlReader.Parse(sheet);
-        static readonly ResourceDictionary darkStyles = (ResourceDictionary)XamlReader.Parse(Recolor(sheet));
+        static readonly ResourceDictionary darkStyles = (ResourceDictionary)XamlReader.Parse(Recolor(sheet)
+            .Replace("Property='Background' Value='#5B9BE0'", "Property='Background' Value='#225995'")
+            .Replace("Property='Background' Value='#4A87C9'", "Property='Background' Value='#2E639E'")
+            .Replace("Property='Background' Value='#D97068'", "Property='Background' Value='#943F3A'")
+            .Replace("Property='Background' Value='#E0807B'", "Property='Background' Value='#A44742'"));
         static ResourceDictionary styles { get { return dark ? darkStyles : lightStyles; } }
 
         public static Style ButtonStyle { get { return (Style)styles["Action"]; } }
         public static Style HintStyle { get { return (Style)styles["Hint"]; } }
-        // 中西文统一用同一族字体，避免 Sego UI 缺中文字形时回退成另一套字重、大小不一的字。
-        public static readonly FontFamily UiFont = new FontFamily("Microsoft YaHei UI");
+        public static Style LinkStyle { get { return (Style)styles["LinkAction"]; } }
+        public static Style SelectionStyle { get { return (Style)styles["Selection"]; } }
+        internal static Viewbox Icon(string name, double size = 18)
+        {
+            var canvas = new Canvas { Width = 24, Height = 24 };
+            canvas.Children.Add(new System.Windows.Shapes.Path { Data = LightMenu.IconGeometry(name), Stroke = Brush("#647386"), StrokeThickness = 1.65, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round });
+            return new Viewbox { Width = size, Height = size, Child = canvas, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
+        }
+        public static Style NavigationItemStyle { get { return (Style)styles["NavigationItem"]; } }
+        public static Style SwitchStyle { get { return (Style)styles["Switch"]; } }
+        public static Style FieldStyle { get { return (Style)styles["Field"]; } }
+        public static Style ChoiceStyle { get { return (Style)styles["Choice"]; } }
+        // Windows 常用界面字体：西文 Segoe UI，中文明确回退到微软雅黑。
+        public static readonly FontFamily UiFont = new FontFamily("Segoe UI, Microsoft YaHei");
         // 透明窗口拿不到 ClearType，但把排版模式切成 Display 能让小字号按整像素落笔，中文明显更实。
         public static void Polish(Window window)
         {
@@ -172,6 +263,14 @@ namespace ScreenLine
             TextOptions.SetTextRenderingMode(window, TextRenderingMode.ClearType);
             window.UseLayoutRounding = true;
             window.SnapsToDevicePixels = true;
+            window.SourceInitialized += delegate { WindowsNative.SetTitleTheme(new System.Windows.Interop.WindowInteropHelper(window).Handle, dark); };
+        }
+        public static void FitDialog(Window window, UIElement content)
+        {
+            var screen = WindowsNative.ScreenAtPointer(); double scale = WindowsNative.MonitorScale(screen);
+            window.Width = Math.Min(window.Width, screen.WorkingArea.Width / scale - 24);
+            window.MaxHeight = Math.Max(120, screen.WorkingArea.Height / scale - 24);
+            window.Content = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         }
         public static SolidColorBrush Brush(string value)
         {
@@ -190,7 +289,15 @@ namespace ScreenLine
             // 会把图片篮子、贴图这些大窗口也压进 CPU 渲染，滚动和缩放每帧整窗重画，明显卡顿。
             // 现在只对反复开关的小型透明挂件逐窗保持软件绘制（见 SoftwareRender/SoftwareRenderMenu），
             // 避免「反复开关面板积累大块图形缓存」的老问题；其余窗口走默认的硬件渲染。
+            foreach (var type in new[] { typeof(RadioButton), typeof(CheckBox), typeof(Expander) })
+            {
+                var controlStyle = new Style(type);
+                controlStyle.Setters.Add(new Setter(Control.ForegroundProperty, Brush("#283343")));
+                controlStyle.Setters.Add(new Setter(Control.FontFamilyProperty, UiFont));
+                app.Resources[type] = controlStyle;
+            }
             app.Resources[typeof(ToolTip)] = styles["Hint"];
+            app.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)] = styles["Scroll"];
         }
 
         // 让单个窗口保持软件渲染（构造函数里调用；真正的设置挂在 HWND 建好之后）。
@@ -226,7 +333,7 @@ namespace ScreenLine
 
         public static Button Button(string title, Action action, string tag = null)
         {
-            var button = new Button { Content = title, Style = ButtonStyle, Tag = tag };
+            var button = new ActionButton { Content = title, Style = ButtonStyle, Tag = tag };
             button.Click += delegate { action(); };
             return button;
         }

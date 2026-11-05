@@ -1,11 +1,15 @@
 ﻿$ErrorActionPreference = 'Stop'
 $installPath = [IO.Path]::GetFullPath((Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Programs\PickSnap'))
 $sourcePath = Join-Path $PSScriptRoot 'app'
+. (Join-Path $sourcePath 'maintenance-common.ps1')
+Assert-PickSnapTree $sourcePath $sourcePath
+Assert-PickSnapTree $installPath $installPath
+if ((Test-Path -LiteralPath (Join-Path $sourcePath 'data')) -or (Test-Path -LiteralPath (Join-Path $sourcePath 'preview-data'))) { throw '安装包不能包含用户数据。' }
 if (-not (Test-Path -LiteralPath (Join-Path $sourcePath 'PickSnap.exe'))) { throw '安装文件不完整，请先完整解压安装包。' }
 $framework = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full'
 if ($framework.Release -lt 528040) { throw '请先安装 .NET Framework 4.8。' }
 $running = @(Get-CimInstance Win32_Process -Filter "Name = 'PickSnap.exe'")
-if ($running.Count) { throw '请先从托盘退出拾帧，再重新安装。' }
+if ($running.Count) { throw '请先从托盘退出 PickSnap，再重新安装。' }
 if ((Test-Path -LiteralPath $installPath) -and ((Get-Item -LiteralPath $installPath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw '安装目录不能是目录链接。' }
 New-Item -ItemType Directory -Path $installPath -Force | Out-Null
 Copy-Item -Path (Join-Path $sourcePath '*') -Destination $installPath -Recurse -Force
@@ -15,6 +19,8 @@ Copy-Item -Path (Join-Path $sourcePath '*') -Destination $installPath -Recurse -
 $stagedData = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'PickSnap\Data'
 $targetData = Join-Path $installPath 'data'
 if ((Test-Path -LiteralPath $stagedData) -and -not (Test-Path -LiteralPath $targetData)) {
+    Assert-PickSnapTree $stagedData (Split-Path $stagedData -Parent)
+    Assert-PickSnapPath $targetData $installPath
     Move-Item -LiteralPath $stagedData -Destination $targetData
 }
 $exePath = Join-Path $installPath 'PickSnap.exe'
@@ -23,11 +29,11 @@ $shortcut = $shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desk
 $shortcut.TargetPath = $exePath
 $shortcut.WorkingDirectory = $installPath
 $shortcut.IconLocation = $exePath + ',0'
-$shortcut.Description = '拾帧：把截图挂在屏幕上沿，随手取用。'
+$shortcut.Description = 'PickSnap：把截图挂在屏幕上沿，随手取用。'
 $shortcut.Save()
 $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\PickSnap'
 New-Item -Path $uninstallKey -Force | Out-Null
-New-ItemProperty -Path $uninstallKey -Name DisplayName -Value 'PickSnap · 拾帧' -PropertyType String -Force | Out-Null
+New-ItemProperty -Path $uninstallKey -Name DisplayName -Value 'PickSnap' -PropertyType String -Force | Out-Null
 New-ItemProperty -Path $uninstallKey -Name DisplayVersion -Value ([Diagnostics.FileVersionInfo]::GetVersionInfo($exePath).ProductVersion) -PropertyType String -Force | Out-Null
 New-ItemProperty -Path $uninstallKey -Name InstallLocation -Value $installPath -PropertyType String -Force | Out-Null
 New-ItemProperty -Path $uninstallKey -Name DisplayIcon -Value ($exePath + ',0') -PropertyType String -Force | Out-Null
@@ -47,6 +53,6 @@ Start-Process -FilePath $exePath -WindowStyle Hidden
 $sourcePath = [IO.Path]::GetFullPath($PSScriptRoot)
 Add-Type -AssemblyName System.Windows.Forms | Out-Null
 [System.Windows.Forms.MessageBox]::Show(
-    ("拾帧安装完成，桌面已创建 PickSnap 快捷方式。`n`n程序已安装到：`n$installPath`n`n本次解压出来的文件夹已经不再需要，可以整个删除：`n$sourcePath`n`n卸载程序只清理上面的安装目录，不会动这个解压文件夹。`n（想留着以后重装，保留下载的 zip 安装包本身即可。）"),
-    '拾帧 PickSnap 安装完成', 'OK', 'Information') | Out-Null
-Write-Output '拾帧安装完成，桌面已创建 PickSnap 快捷方式。'
+    ("PickSnap 安装完成，桌面已创建 PickSnap 快捷方式。`n`n程序已安装到：`n$installPath`n`n本次解压出来的文件夹已经不再需要，可以整个删除：`n$sourcePath`n`n卸载程序只清理上面的安装目录，不会动这个解压文件夹。`n（想留着以后重装，保留下载的 zip 安装包本身即可。）"),
+    'PickSnap 安装完成', 'OK', 'Information') | Out-Null
+Write-Output 'PickSnap 安装完成，桌面已创建 PickSnap 快捷方式。'

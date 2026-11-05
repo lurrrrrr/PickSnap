@@ -85,7 +85,7 @@ namespace ScreenLine
                     try
                     {
                         var data = Clipboard.GetDataObject();
-                        if (data == null || data.GetDataPresent(DataFormats.FileDrop)) return null;
+                        if (data == null || data.GetDataPresent(ClipboardRules.OwnFormat) || data.GetDataPresent(DataFormats.FileDrop)) return null;
                         // 复制图片不应该当文字收；但 Excel、Word 复制文字时会顺带放一份位图预览，
                         // 所以先看有没有文字，只有确实没文字、又带图，才当成图片复制跳过。
                         if (data.GetDataPresent(DataFormats.UnicodeText)) return data.GetData(DataFormats.UnicodeText) as string;

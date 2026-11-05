@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -94,7 +94,7 @@ namespace ScreenLine
             }
             else if (mark.Tool == "文字")
                 drawing.DrawText(new FormattedText(mark.Text ?? "", CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-                    new Typeface("Microsoft YaHei UI"), Math.Max(16, mark.Size * 7), pen.Brush, 1), mark.Start);
+                    new Typeface("Segoe UI, Microsoft YaHei"), Math.Max(16, mark.Size * 7), pen.Brush, 1), mark.Start);
             else if (mark.Tool == "马赛克" && !region.IsEmpty && region.Width >= 1 && region.Height >= 1)
             {
                 // 缩小选区后用最近邻放大，只遮挡用户划定的部分。
@@ -138,7 +138,7 @@ namespace ScreenLine
         readonly Border toolbar;
         readonly TextBlock dimensions = new TextBlock { Foreground = Brushes.White, FontSize = 12, Margin = new Thickness(8, 4, 8, 4) };
         readonly Border badge;
-        readonly TextBox text = new TextBox { MinWidth = 160, MaxWidth = 480, FontFamily = new FontFamily("Microsoft YaHei UI"), FontSize = 21, Padding = new Thickness(4), Visibility = Visibility.Collapsed };
+        readonly TextBox text = new TextBox { MinWidth = 160, MaxWidth = 480, FontFamily = new FontFamily("Segoe UI, Microsoft YaHei"), FontSize = 21, Padding = new Thickness(4), Visibility = Visibility.Collapsed };
         readonly Stack<CaptureMark> redo = new Stack<CaptureMark>();
         readonly List<Rect> windows;
         readonly double scale;
@@ -155,7 +155,7 @@ namespace ScreenLine
         internal CaptureWindow(Forms.Screen screen, BitmapSource picture = null)
         {
             scale = WindowsNative.MonitorScale(screen);
-            Title = "区域截图 · 拾帧";
+            Title = "区域截图 · PickSnap";
             WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; ShowInTaskbar = false;
             Topmost = true; Background = Brushes.Black; Cursor = Cursors.Cross;
             Width = screen.Bounds.Width / scale; Height = screen.Bounds.Height / scale;
@@ -252,6 +252,36 @@ namespace ScreenLine
         static Border Divider() { return new Border { Width = 1, Height = 20, Background = LightTheme.Brush("#E4E9EF"), Margin = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center }; }
 
         internal Task<BitmapSource> PickAsync() { Show(); return completion.Task; }
+
+        internal static async Task<BitmapSource> PickAcrossScreens(Action<CaptureWindow> track)
+        {
+            // 在显示任一遮罩前读完各屏，避免把另一块屏的截图界面也截进去。
+            var screens = WindowsNative.Screens;
+            var pictures = screens.Select(ReadScreen).ToArray();
+            var overlays = new List<CaptureWindow>();
+            try
+            {
+                for (int i = 0; i < screens.Length; i++) overlays.Add(new CaptureWindow(screens[i], pictures[i]));
+                foreach (var current in overlays)
+                {
+                    current.MouseEnter += delegate { if (!overlays.Any(w => w.selecting || w.drawing || w.moving)) { current.Activate(); current.Focus(); } };
+                    current.Surface.PreviewMouseLeftButtonDown += delegate
+                    {
+                        foreach (var other in overlays.Where(w => w != current))
+                        {
+                            other.Surface.Selection = Rect.Empty; other.Surface.Marks.Clear(); other.Surface.Pending = null;
+                            other.redo.Clear(); other.text.Visibility = Visibility.Collapsed; other.toolbar.Visibility = Visibility.Collapsed; other.Surface.InvalidateVisual();
+                        }
+                    };
+                }
+                var tasks = overlays.Select(w => w.PickAsync()).ToArray();
+                var display = WindowsNative.ScreenAtPointer(); int active = Array.FindIndex(screens, s => s.DeviceName == display.DeviceName);
+                var first = overlays[Math.Max(0, active)]; track(first); first.Activate(); first.Focus();
+                var completed = await Task.WhenAny(tasks);
+                return await completed;
+            }
+            finally { foreach (var overlay in overlays) overlay.Close(); track(null); }
+        }
 
         internal static BitmapSource ReadScreen(Forms.Screen display)
         {
@@ -393,7 +423,7 @@ namespace ScreenLine
             var picker = new SaveFileDialog { Title = "保存截图", Filter = "PNG 图片|*.png", FileName = "截图_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".png", AddExtension = true, DefaultExt = ".png" };
             if (picker.ShowDialog(this) != true) return;
             try { ImageEditFiles.Save(picker.FileName, ImageContent.EncodeClipboard(Surface.Export())); }
-            catch (Exception error) { MessageBox.Show(this, "无法保存截图：" + error.Message, "拾帧", MessageBoxButton.OK, MessageBoxImage.Error); }
+            catch (Exception error) { MessageBox.Show(this, "无法保存截图：" + error.Message, "PickSnap", MessageBoxButton.OK, MessageBoxImage.Error); }
         }
 
         void Finish()

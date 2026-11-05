@@ -44,7 +44,7 @@ namespace ScreenLine
         readonly Image basketImage = new Image { Width = 112, Stretch = Stretch.Uniform, IsHitTestVisible = false };
         readonly RotateTransform basketTurn = new RotateTransform();
         readonly ScaleTransform basketCounterScale = new ScaleTransform(1, 1);
-        readonly SpringMotion basketMotion = new SpringMotion(0.5, 0.5, 0);
+        readonly SpringMotion basketMotion = new SpringMotion(0.62, 0.6, 0);
         readonly SpringMotion basketCounterMotion = new SpringMotion(0.28, 0.65, 1);
         int pendingPictures;
         readonly Button openBasket = new Button();
@@ -61,9 +61,10 @@ namespace ScreenLine
         // 绳子重新排布（启动、换屏）后自己会被 SetWindowPos 提到置顶组最前，
         // 开着的小窗口要据此把自己再提回来，否则会被压在绳子下面。
         public event Action RopeMoved;
+        internal event Action RopeStatusChanged;
         readonly TranslateTransform slide = new TranslateTransform(0, HiddenY);
-        readonly SpringMotion revealMotion = new SpringMotion(0.42, 0.82, HiddenY);
-        readonly SpringMotion ropeMotion = new SpringMotion(0.55, 0.78, 18);
+        readonly SpringMotion revealMotion = new SpringMotion(0.36, 0.92, HiddenY);
+        readonly SpringMotion ropeMotion = new SpringMotion(0.46, 0.86, 18);
         readonly SpringMotion scrollMotion = new SpringMotion(0.5, 0.9, 0);
         readonly Stopwatch clock = Stopwatch.StartNew();
         readonly Random random = new Random();
@@ -72,7 +73,8 @@ namespace ScreenLine
         bool closing;
         readonly DispatcherTimer pointer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(30) };
         readonly DispatcherTimer scrollHover = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
-        DateTime edgeSince = DateTime.MaxValue, awaySince = DateTime.MaxValue, peekUntil;
+        readonly RevealDwell edgeReveal = new RevealDwell();
+        DateTime awaySince = DateTime.MaxValue, peekUntil;
         DateTime nextGust;
         double lastFrame, hideTime, hideFrom, drawnWidth = -1, drawnSag = -1;
         double lastScrollOffset;
@@ -84,6 +86,7 @@ namespace ScreenLine
         public bool Revealed { get; private set; }
         public IntPtr Handle { get; private set; }
         public Forms.Screen Display { get; private set; }
+        internal double RevealOffset { get { return slide.Y; } }
         public LineTheme Appearance { get; private set; }
         internal bool ChoosingAppearance { get; set; }
         internal bool ChoosingBasket { get; set; }
@@ -91,10 +94,10 @@ namespace ScreenLine
         internal bool Capturing { get; set; }
         // 关掉某类收集后，对应的入口就从绳子上收起来，把右端让给图片；内容仍在，随时可从托盘面板打开。
         // 篮子例外：自动上绳关掉后，新截图仍然会落进篮子，这时不能把入口藏了。
-        bool ShowBasket { get { return gallery.Store.State.CollectClipboard || !gallery.Store.State.AutoHang; } }
+        bool ShowBasket { get { return gallery.Store.State.CollectClipboard; } }
         // 信封例外于篮子：收集关掉但里面还有文字时保留图标——否则从托盘点「文字信封」
         // 打开窗口时没有锚点，窗口会飘在屏幕角落。文字清空且收集也关着才真正收起来。
-        bool ShowEnvelope { get { return gallery.Store.State.CollectTextClipboard || gallery.Store.State.Texts.Count > 0; } }
+        bool ShowEnvelope { get { return gallery.Store.State.CollectTextClipboard; } }
         double AccessoryWidth { get { return (ShowBasket ? 156 : 0) + (ShowEnvelope ? 104 : 0); } }
         // 绳子两端的滚动箭头：无底板、无边框的纤细雪佛龙，外面包一块几乎不可见的隐形垫（约 2% 透明度）
         // 扩大命中区——纯透明背景在分层窗口会被系统穿透，alpha>0 才点得到。默认近乎隐身（透明度 0.25），
@@ -126,7 +129,7 @@ namespace ScreenLine
         readonly DispatcherTimer arrowHover = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
         // 换屏分两步走：先收起、等一小会儿再移动、再展开。跨屏缩放比不同，窗口尺寸会突变，
         // 收着移动就看不见那一跳。180ms 足够收起动画走完，又不至于让人觉得卡。
-        readonly DispatcherTimer displaySwitch = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(180) };
+        readonly DispatcherTimer displaySwitch = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(230) };
         bool displaySwitchShown;
         // 拖夹子到视口边缘时的自动滚动方向（-1 向左 / 1 向右 / 0 不滚）；按渲染帧积分推进，保持顺滑。
         int dragScrollDirection;
@@ -177,7 +180,7 @@ namespace ScreenLine
                 var card = cards.Values.FirstOrDefault(item => item.Surface.IsMouseOver && !item.Grip.IsMouseOver);
                 if (card != null) Preview.Enter(card);
             };
-            Title = "PickSnap · 拾帧";
+            Title = "PickSnap";
             Width = 1000;
             Height = 220;
             WindowStyle = WindowStyle.None;
@@ -255,7 +258,7 @@ namespace ScreenLine
             {
                 string[] paths = e.Data.GetData(DataFormats.FileDrop) as string[];
                 bool match = paths != null && paths.Any(path => cards.ContainsKey(path));
-                e.Effects = match ? DragDropEffects.Move : DragDropEffects.None;
+                e.Effects = match ? DragDropEffects.Copy : DragDropEffects.None;
                 e.Handled = true;
                 if (match && basketMotion.Target == 0) { basketMotion.Target = 1.3; StartRendering(); }
             };
@@ -357,7 +360,7 @@ namespace ScreenLine
                 pointer.Start();
             };
             Loaded += delegate { Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(delegate { if (!closing) MoveToDisplay(); })); };
-            SizeChanged += delegate { UpdateAccessories(); TrimToCapacity(); LayoutCards(); };
+            SizeChanged += delegate { UpdateAccessories(); TrimToCapacity(); LayoutCards(); if (RopeStatusChanged != null) RopeStatusChanged(); };
             pointer.Tick += Tick;
             displaySwitch.Tick += delegate
             {
@@ -483,9 +486,9 @@ namespace ScreenLine
                 if (changed && pins.TryGetValue(item.Path, out pinnedImage)) pinnedImage.UpdateImage();
             }
             hint.Visibility = gallery.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-            helpTitle.Text = gallery.Store.State.AutoHang ? "截图会挂在这里" : "从图片篮子里挑几张挂上";
-            helpDetail.Text = gallery.Store.State.AutoHang ? "Win + PrtScn · 或开启剪贴板截图收集" : "截图会先收好，需要时再挂上绳子";
-            openBasket.Visibility = gallery.Store.State.AutoHang ? Visibility.Collapsed : Visibility.Visible;
+            helpTitle.Text = "截图会挂在这里";
+            helpDetail.Text = gallery.Store.State.CollectClipboard ? "截图或复制图片，即可自动挂上" : "从托盘开启收集图片，或手动添加图片";
+            openBasket.Visibility = Visibility.Collapsed;
             int pending = gallery.Collected.Count(i => !gallery.Contains(i.Path));
             if (pending > pendingPictures && Revealed && !flights.Any(flight => flight.Collecting || flight.Falling)) BasketReceived();
             pendingPictures = pending; basketCount.Text = pending.ToString();
@@ -508,7 +511,7 @@ namespace ScreenLine
         internal int RoomForHanging()
         {
             int hanging = 0;
-            foreach (var card in cards.Values) if (!card.Detached && !card.Flying) hanging++;
+            foreach (var card in cards.Values) if (!card.Detached) hanging++;
             return Math.Max(0, RopeCapacity - hanging);
         }
 
@@ -936,11 +939,10 @@ namespace ScreenLine
             if (card.Detached) return;
             card.BeginFlight();
             var bounds = Display.Bounds;
-            // 起飞图不再铺到屏幕 70%（全屏截图甚至从整屏起步）：以「卡片约 3.2 倍大、
-            // 且不超过屏幕 42%」为上界，保留「这是刚截的图」的辨识度，又不会从整屏猛缩成小卡片。
+            // 起飞图以卡片约 2.3 倍、屏幕 32% 为上界，保持落点可辨识，避免大面积缩放遮挡工作区。
             double monitorScale = WindowsNative.MonitorScale(Display);
-            double maxWidth = Math.Min(bounds.Width * 0.42, 164 * 3.2 * monitorScale);
-            double maxHeight = Math.Min(bounds.Height * 0.42, 178 * 3.2 * monitorScale);
+            double maxWidth = Math.Min(bounds.Width * 0.32, 164 * 2.3 * monitorScale);
+            double maxHeight = Math.Min(bounds.Height * 0.32, 178 * 2.3 * monitorScale);
             double scale = Math.Min(1, Math.Min(maxWidth / item.Image.PixelWidth, maxHeight / item.Image.PixelHeight));
             double width = item.Image.PixelWidth * scale, height = item.Image.PixelHeight * scale;
             double left = Math.Max(bounds.Left, Math.Min(bounds.Right - width, origin.Value.X - width));
@@ -972,9 +974,9 @@ namespace ScreenLine
 
         void BasketReceived()
         {
-            if (closing || !Revealed || !gallery.Store.State.CollectClipboard) return;
-            basketMotion.Velocity = Math.Max(-48, basketMotion.Velocity - 32);
-            basketCounterMotion.Velocity = Math.Min(2, basketCounterMotion.Velocity + 1.2);
+            if (closing || !Revealed || BasketButton.Visibility != Visibility.Visible) return;
+            basketMotion.Target = 0; basketMotion.Kick(-MotionTiming.BasketSwing);
+            basketCounterMotion.Velocity = Math.Min(1.4, basketCounterMotion.Velocity + 0.8);
             StartRendering();
         }
 
@@ -988,7 +990,7 @@ namespace ScreenLine
             card.BeginFlight();
             LayoutCards();
             SettleScrollFor(card);
-            PlayFlight(new ShotFlight(Display, card, origin, false, delegate { card.Land(); ropeMotion.Velocity += 12; }, picture));
+            PlayFlight(new ShotFlight(Display, card, origin, false, delegate { card.Land(); ropeMotion.Velocity += 5; }, picture));
         }
 
         // 图片飞回绳子之前把横向滚动「定住」。
@@ -1045,10 +1047,10 @@ namespace ScreenLine
             try
             {
                 var picture = Task.Run(() => PinnedImageWindow.ReadPicture(card.Item.Path));
-                await Task.Delay(40);
+                await Task.Delay(70);
                 var image = await picture;
                 if (closing || card.IsDisposed) return;
-                var window = new PinnedImageWindow(card.Item, origin, ((RotateTransform)card.RenderTransform).Angle, image, Appearance, card.ColorIndex);
+                var window = new PinnedImageWindow(card.Item, origin, card.VisualTilt, image, Appearance, card.ColorIndex);
                 pins.Add(card.Item.Path, window);
                 window.Closed += delegate
                 {
@@ -1057,6 +1059,7 @@ namespace ScreenLine
                     card.Detached = false;
                     card.ResetClip();
                     card.BeginFlight();
+                    if (RopeStatusChanged != null) RopeStatusChanged();
                     var bounds = window.ReturnBounds;
                     MoveToDisplay();
                     Reveal(true, false, 3, true);
@@ -1065,7 +1068,8 @@ namespace ScreenLine
                     PlayFlight(new ShotFlight(Display, card, bounds, false, card.Land, window.Picture));
                 };
                 card.DetachPhoto();
-                ropeMotion.Velocity -= 24;
+                if (RopeStatusChanged != null) RopeStatusChanged();
+                ropeMotion.Velocity -= 10;
                 LayoutCards();
                 window.Show();
             }
@@ -1098,9 +1102,9 @@ namespace ScreenLine
             }
             else
             {
-                if (nextGust == default(DateTime)) nextGust = DateTime.UtcNow.AddSeconds(7 + random.NextDouble() * 17);
+                if (nextGust == default(DateTime)) nextGust = DateTime.UtcNow.AddSeconds(14 + random.NextDouble() * 18);
                 // quiet=true：挂回/编辑返回时展开绳子，不给所有夹子来一下摆动。
-                if (!quiet) foreach (var card in cards.Values) card.Nudge(1.2);
+                if (!quiet) foreach (var card in cards.Values) card.Nudge(0.55);
             }
         }
 
@@ -1153,11 +1157,11 @@ namespace ScreenLine
             }
             ropeMotion.Step(elapsed);
             double dipTarget = dragCard != null ? DipDepth : 0;
-            if (Math.Abs(dipTarget - dipAmount) > 0.05) dipAmount += (dipTarget - dipAmount) * Math.Min(1, elapsed * 14);
+            if (Math.Abs(dipTarget - dipAmount) > 0.05) dipAmount += (dipTarget - dipAmount) * (1 - Math.Exp(-14 * elapsed));
             else dipAmount = dipTarget;
             foreach (var item in cards.Values) { item.DipCenter = dipCenter; item.DipAmount = dipAmount; }
             DrawRope();
-            basketMotion.Step(elapsed); basketTurn.Angle = basketMotion.Position;
+            basketMotion.Step(elapsed); basketTurn.Angle = Math.Max(-MotionTiming.BasketSwing, Math.Min(MotionTiming.BasketSwing, basketMotion.Position));
             basketCounterMotion.Step(elapsed); basketCounterScale.ScaleX = basketCounterScale.ScaleY = basketCounterMotion.Position;
             if (gallery.Store.State.CollectTextClipboard) envelopeImage.Frame(elapsed);
             // 拖夹子贴到视口边缘时按帧推进滚动（到绳首/绳尾即停），夹子位置同帧跟随光标，滚动连续不跳格。
@@ -1261,7 +1265,7 @@ namespace ScreenLine
             {
                 scrollMotion.Target = target;
                 StartRendering();
-                nextGust = DateTime.UtcNow.AddSeconds(7 + random.NextDouble() * 17);
+                nextGust = DateTime.UtcNow.AddSeconds(14 + random.NextDouble() * 18);
             }
         }
 
@@ -1316,8 +1320,7 @@ namespace ScreenLine
             var cursor = WindowsNative.Cursor();
             var screen = SelectedDisplay();
             bool down = (WindowsNative.GetAsyncKeyState(1) & 0x8000) != 0;
-            bool nearTop = cursor.X >= screen.Bounds.Left && cursor.X < screen.Bounds.Right
-                && cursor.Y >= screen.Bounds.Top && cursor.Y <= Math.Max(screen.Bounds.Top + 2, screen.WorkingArea.Top - 1);
+            bool nearTop = RevealPolicy.NearTop(screen.Bounds, screen.WorkingArea, cursor.X, cursor.Y, WindowsNative.MonitorScale(screen));
             var interval = TimeSpan.FromMilliseconds(Revealed || nearTop ? 30 : 100);
             if (pointer.Interval != interval) pointer.Interval = interval;
             bool over = Revealed && OverControl(cursor);
@@ -1327,7 +1330,7 @@ namespace ScreenLine
             if ((Revealed || nearTop || avoidingCaption) && !busy && !viewing && !ChoosingAppearance && !ChoosingBasket && !ChoosingTexts
                 && WindowsNative.OverCaptionButtons(screen, cursor, Handle))
             {
-                edgeSince = DateTime.MaxValue; previousDown = down;
+                edgeReveal.Reset(); previousDown = down;
                 if (Revealed) { avoidingCaption = true; Reveal(false, false, 0); }
                 return;
             }
@@ -1349,17 +1352,16 @@ namespace ScreenLine
             previousDown = down;
             if (nearTop && !down && !suppressEdge && !WindowsNative.FullScreen(screen, Handle))
             {
-                if (edgeSince == DateTime.MaxValue) edgeSince = now;
                 // 「鼠标移至顶部时展开」关掉后不再自动出现；已经在绳子上的保持原样（照旧是离开才收起）。
-                bool hoverAllowed = Revealed || !gallery.Store.State.NoHoverReveal;
-                if (hoverAllowed && !displaySwitch.IsEnabled && now - edgeSince >= TimeSpan.FromMilliseconds(320)
+                bool hoverAllowed = (!ChoosingBasket || Revealed) && (Revealed || !gallery.Store.State.NoHoverReveal) && RevealPolicy.Contains(screen.Bounds, cursor.X, gallery.Store.State.RevealZone);
+                if (edgeReveal.Ready(hoverAllowed && !displaySwitch.IsEnabled, screen.DeviceName + ":" + gallery.Store.State.RevealZone, now, gallery.Store.State.RevealDelayMs)
                     && (!Revealed || screen.DeviceName != Display.DeviceName))
                 {
                     if (Revealed) ScheduleDisplaySwitch(true);   // 换屏：先收起再移动
                     else { MoveToDisplay(); Reveal(true, false, 0); }
                 }
             }
-            else edgeSince = DateTime.MaxValue;
+            else edgeReveal.Reset();
             if (WindowsNative.FullScreen(Display, Handle)) { Reveal(false, false, 0); return; }
             // 拖夹子时鼠标会离开夹子本身，这里必须保持窗口可接收鼠标，否则拖到一半就断了。
             bool holdingCard = dragCard != null;
@@ -1368,9 +1370,9 @@ namespace ScreenLine
             if (!rendering && NeedsRendering) StartRendering();
             if (cards.Count > 0 && Math.Abs(scrollMotion.Velocity) < 8 && Math.Abs(scrollMotion.Target - viewport.HorizontalOffset) < 0.5 && !busy && now >= nextGust)
             {
-                nextGust = now.AddSeconds(7 + random.NextDouble() * 17);
+                nextGust = now.AddSeconds(14 + random.NextDouble() * 18);
                 int direction = random.Next(2) == 0 ? -1 : 1;
-                foreach (var card in cards.Values) card.Breeze(random.NextDouble() * 0.35, direction * (1.6 + random.NextDouble() * 1.8));
+                foreach (var card in cards.Values) card.Breeze(random.NextDouble() * 0.25, direction * (0.8 + random.NextDouble() * 0.8));
                 StartRendering();
             }
             WindowsNative.Rectangle bounds;
@@ -1405,14 +1407,16 @@ namespace ScreenLine
         readonly Button close = new Button();
         readonly Border copied = new Border();
         readonly RotateTransform tilt = new RotateTransform(0, 82, 8);
+        readonly TranslateTransform placement = new TranslateTransform();
         Point position;
         readonly ScaleTransform photoScale = new ScaleTransform(1, 1);
-        readonly SpringMotion xMotion = new SpringMotion(0.55, 0.78, 0);
-        readonly SpringMotion drop = new SpringMotion(0.42, 0.72, -46) { Target = 0 };
-        readonly SpringMotion swing = new SpringMotion(2 * Math.PI / Math.Sqrt(46), 2.6 / (2 * Math.Sqrt(46)), 16) { Target = 0 };
-        readonly SpringMotion scaleMotion = new SpringMotion(0.3, 0.6, 1);
+        readonly SpringMotion xMotion = new SpringMotion(0.40, 0.9, 0);
+        readonly SpringMotion drop = new SpringMotion(0.34, 0.88, -18) { Target = 0 };
+        readonly SpringMotion swing = new SpringMotion(0.72, 0.6, MotionTiming.CardSwing) { Target = 0 };
+        readonly SpringMotion scaleMotion = new SpringMotion(0.25, 0.86, 1);
         readonly DispatcherTimer hold = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(480) };
         readonly DispatcherTimer flash = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.2) };
+        readonly Gallery gallery;
         readonly Action<ShotAction, CaptureItem> act;
         readonly ImageMenu menu;
         internal ImageMenu ActionMenu { get { return menu; } }
@@ -1433,7 +1437,7 @@ namespace ScreenLine
             get
             {
                 return !xMotion.Settled || !drop.Settled || !swing.Settled || !scaleMotion.Settled || !clipMotion.Settled
-                    || breezeDelay >= 0 || entryTime < 0.16 || scaleMotion.Target != (pressed ? 0.95 : (hovering && !Releasing ? 1.035 : 1))
+                    || breezeDelay >= 0 || entryTime < MotionTiming.CardFade || scaleMotion.Target != (pressed ? 0.975 : (hovering && !Releasing ? 1.018 : 1))
                     || clipMotion.Target != (gripHover || Releasing ? 1 : 0);
             }
         }
@@ -1442,6 +1446,7 @@ namespace ScreenLine
         public bool Releasing { get; private set; }
         public bool IsDisposed { get; private set; }
         public readonly double Tilt;
+        internal double VisualTilt { get { return tilt.Angle; } }
         public LineTheme Appearance { get; private set; }
         public int ColorIndex { get; private set; }
         internal double MountX { get { return xMotion.Target; } }
@@ -1455,9 +1460,10 @@ namespace ScreenLine
             Appearance = LineTheme.All[0];
             this.act = act;
             Width = 164;
+            this.gallery = gallery;
             Height = 178;
-            RenderTransform = tilt;
-            Tilt = (item.Path.GetHashCode() & 7) * 0.7 - 2.45;
+            RenderTransform = new TransformGroup { Children = { tilt, placement } };
+            Tilt = (item.Path.GetHashCode() & 7) * 0.42 - 1.47;
             Opacity = 0;
             Surface.RenderTransform = photoScale;
             Surface.RenderTransformOrigin = new Point(0.5, 0);
@@ -1496,8 +1502,8 @@ namespace ScreenLine
             // 底色必须是「几乎透明」而不是 Transparent：本窗口是透明分层窗口，
             // alpha=0 的像素（Transparent）不参与系统层命中测试，点击会直接穿透到桌面；
             // 而夹子图案 ClothesClip 自身 IsHitTestVisible=false，整个按钮就会一个可点像素都没有。
-            // 这里用 3% 不透明度的白底，肉眼看不见，但整块热区都能接收到鼠标事件。
-            Grip.Template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(LightTheme.Sheet("<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'><Border Background='#08FFFFFF'><ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Top'/></Border></ControlTemplate>"));
+            // 这里用 alpha=1（约 0.4% 不透明度）的白底，深色壁纸上也几乎看不见，但整块热区都能接收到鼠标事件。
+            Grip.Template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse(LightTheme.Sheet("<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'><Border Background='#01FFFFFF'><ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Top'/></Border></ControlTemplate>"));
             Grip.Focusable = false;
             Grip.Cursor = Cursors.Hand;
             Grip.ToolTip = new ToolTip { Content = "贴到桌面", Style = LightTheme.HintStyle,
@@ -1587,7 +1593,7 @@ namespace ScreenLine
                 breezeDelay -= elapsed;
                 if (breezeDelay < 0 && !Flying && !Busy) Nudge(breezeAngle);
             }
-            scaleMotion.Target = pressed ? 0.95 : (hovering && !Releasing ? 1.035 : 1);
+            scaleMotion.Target = pressed ? 0.975 : (hovering && !Releasing ? 1.018 : 1);
             scaleMotion.Step(elapsed);
             clipMotion.Target = gripHover || Releasing ? 1 : 0;
             clipMotion.Step(elapsed);
@@ -1602,11 +1608,12 @@ namespace ScreenLine
                 double delta = xMotion.Position + 82 - DipCenter;
                 position.Y += DipAmount * Math.Exp(-(delta * delta) / (2 * 78 * 78));
             }
-            Canvas.SetLeft(this, position.X);
-            Canvas.SetTop(this, position.Y);
+            // 位移只走合成变换，拖动/摆动不再逐帧重新排列 Canvas 子项。
+            placement.X = position.X;
+            placement.Y = position.Y;
             tilt.Angle = Tilt + swing.Position;
             entryTime += elapsed;
-            Opacity = Flying ? 0 : Math.Min(1, entryTime / 0.16);
+            Opacity = Flying ? 0 : Math.Min(1, entryTime / MotionTiming.CardFade);
             // 窗口两端的渐隐只作用于照片本体：夹子保持完全可见、可命中，随时能拖回来。
             // 渐隐用渐变遮罩实现——只有靠可视区边缘的一条照片区域淡出，其余保持完全不透明。
             // 可视区以 viewport 为准（左侧缩进 24、右侧缩进 284 给篮子/信封），左右对称。
@@ -1646,8 +1653,8 @@ namespace ScreenLine
         }
 
         public void Breeze(double delay, double degrees) { breezeDelay = delay; breezeAngle = degrees; }
-        public void ScrollWith(double velocity) { swing.Target = Flying || Busy ? 0 : Math.Max(-2.5, Math.Min(2.5, -velocity / 200)); }
-        public void Nudge(double degrees) { if (!Flying && !IsDisposed) swing.Velocity += degrees * 8; }
+        public void ScrollWith(double velocity) { swing.Target = Flying || Busy ? 0 : Math.Max(-1.4, Math.Min(1.4, -velocity / 280)); }
+        public void Nudge(double degrees) { if (!Flying && !IsDisposed) swing.Velocity = Math.Max(-14, Math.Min(14, swing.Velocity + degrees * 8)); }
 
         public void OpenClip()
         {
@@ -1685,8 +1692,10 @@ namespace ScreenLine
         {
             if (IsDisposed) return;
             Flying = false;
-            entryTime = 0;
-            Nudge(2.2);
+            // 同一帧把真实卡片交接出来，飞行层再淡走，避免落点闪空一帧。
+            entryTime = MotionTiming.CardFade;
+            Opacity = 1;
+            swing.Target = 0; swing.Kick(MotionTiming.CardSwing);
         }
 
         // 飞行落点在起飞瞬间算一次并固定。若弹簧还在把卡片往目标位置推，
@@ -1697,12 +1706,15 @@ namespace ScreenLine
             drop.Snap(0);
             swing.Snap(0);
             position.X = xMotion.Target;
+            placement.X = position.X;
         }
 
-        public Rect PhotoRect()
+        public Rect PhotoRect(bool atRest = false)
         {
             var parent = (Canvas)Parent;
             double x = position.X + (Width - Surface.Width) / 2, y = position.Y + 20;
+            var shelf = Window.GetWindow(this) as ShelfWindow;
+            if (atRest && shelf != null) y -= shelf.RevealOffset;
             return new Rect(parent.PointToScreen(new Point(x, y)), parent.PointToScreen(new Point(x + Surface.Width, y + Surface.Height)));
         }
 
@@ -1739,23 +1751,27 @@ namespace ScreenLine
             Surface.ReleaseMouseCapture();
             var payload = new DataObject(DataFormats.FileDrop, new[] { Item.Path });
             var preview = new DragPreview(Item.Image.Thumbnail);
-            try { preview.Show(); DragDrop.DoDragDrop(Surface, payload, DragDropEffects.Copy | DragDropEffects.Move); }
+            try
+            {
+                preview.Show();
+                DragDrop.DoDragDrop(Surface, payload, DragDropEffects.Copy);
+            }
             finally { preview.Close(); dragging = false; chrome = 1; }
         }
 
         public void FlashCopied()
         {
             copied.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromSeconds(0.15)));
-            Nudge(3);
+            Nudge(0.8);
             flash.Stop(); flash.Start();
         }
-        public void Dispose() { IsDisposed = true; hold.Stop(); flash.Stop(); menu.IsOpen = false; }
+        public void Dispose() { IsDisposed = true; hold.Stop(); flash.Stop(); menu.CloseMenu(); }
     }
 
     internal sealed class DragPreview : Window
     {
-        readonly DispatcherTimer follow = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(25) };
         IntPtr handle;
+        int placedX = int.MinValue, placedY = int.MinValue, placedWidth, placedHeight;
 
         public DragPreview(System.Windows.Media.Imaging.BitmapSource image)
         {
@@ -1776,18 +1792,21 @@ namespace ScreenLine
                 handle = new WindowInteropHelper(this).Handle;
                 WindowsNative.PrepareOverlay(handle);
                 WindowsNative.PassMouse(handle, true);
-                Follow();
-                follow.Start();
+                Follow(null, EventArgs.Empty);
+                CompositionTarget.Rendering += Follow;
             };
-            follow.Tick += delegate { Follow(); };
-            Closed += delegate { follow.Stop(); };
+            Closed += delegate { CompositionTarget.Rendering -= Follow; };
         }
 
-        void Follow()
+        void Follow(object sender, EventArgs args)
         {
             var cursor = WindowsNative.Cursor();
             double scale = WindowsNative.MonitorScale(WindowsNative.ScreenAtPointer());
-            WindowsNative.SetWindowPos(handle, new IntPtr(-1), cursor.X + 18, cursor.Y + 20, (int)(Width * scale), (int)(Height * scale), 0x10);
+            int x = cursor.X + 18, y = cursor.Y + 20, width = (int)Math.Round(Width * scale), height = (int)Math.Round(Height * scale);
+            if (x == placedX && y == placedY && width == placedWidth && height == placedHeight) return;
+            bool resize = width != placedWidth || height != placedHeight;
+            WindowsNative.SetWindowPos(handle, IntPtr.Zero, x, y, width, height, resize ? 0x14u : 0x15u);
+            placedX = x; placedY = y; placedWidth = width; placedHeight = height;
         }
     }
 }

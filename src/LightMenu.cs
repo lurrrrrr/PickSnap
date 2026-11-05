@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
@@ -14,7 +14,7 @@ namespace ScreenLine
         static readonly ResourceDictionary theme = (ResourceDictionary)XamlReader.Parse(LightTheme.Sheet(@"
 <ResourceDictionary xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
   <Style x:Key='Menu' TargetType='ContextMenu'>
-    <Setter Property='Width' Value='246'/><Setter Property='FontFamily' Value='Microsoft YaHei UI'/>
+    <Setter Property='Width' Value='246'/><Setter Property='FontFamily' Value='Segoe UI, Microsoft YaHei'/>
     <Setter Property='FontSize' Value='12'/><Setter Property='Foreground' Value='#283343'/>
     <Setter Property='HasDropShadow' Value='False'/><Setter Property='SnapsToDevicePixels' Value='True'/>
     <Setter Property='TextOptions.TextFormattingMode' Value='Display'/>
@@ -84,6 +84,7 @@ namespace ScreenLine
             { "add", "M14,3 H5 Q3,3 3,5 V19 Q3,21 5,21 H19 Q21,21 21,19 V12 M3,17 L8,12 L12,16 L15,13 L21,19 M17,6 H23 M20,3 V9" },
             { "clear", "M6,3 H19 Q21,3 21,5 V16 M5,7 H15 Q17,7 17,9 V19 Q17,21 15,21 H5 Q3,21 3,19 V9 Q3,7 5,7 Z M7,14 H13" },
             { "startup", "M12,3 L19,10 H14 V21 H10 V10 H5 Z" },
+            { "settings", "M9,3 H15 L15.7,6 L18,7.3 L20.9,6.4 L23,10 L20.8,12 L20.8,14 L23,16 L20.9,19.6 L18,18.7 L15.7,20 L15,23 H9 L8.3,20 L6,18.7 L3.1,19.6 L1,16 L3.2,14 L3.2,12 L1,10 L3.1,6.4 L6,7.3 L8.3,6 Z M16,13 A4,4 0 1 0 8,13 A4,4 0 1 0 16,13" },
             { "appearance", "M12,3 A9,9 0 1 0 12,21 H14 Q17,21 17,18 Q17,16 15,16 H14 Q12,16 12,14 Q12,12 14,12 H19 Q22,12 21,9 Q20,3 12,3 Z M7,8 H7.1 M11,6 H11.1 M16,7 H16.1 M6,13 H6.1" },
             { "exit", "M6,6 A8,8 0 1 0 18,6 M12,3 V12" },
             { "envelope", "M5,4 H19 Q21,4 21,6 V18 Q21,20 19,20 H5 Q3,20 3,18 V6 Q3,4 5,4 Z M3,6 L12,13 L21,6" },
@@ -92,6 +93,7 @@ namespace ScreenLine
             { "more", "M21,12 A9,9 0 1 0 3,12 A9,9 0 1 0 21,12 M7,12 H7.1 M12,12 H12.1 M17,12 H17.1" },
             { "chevron", "M9,4 L16,12 L9,20" },
             { "refresh", "M20,4 V9 H15 M20,9 A8,8 0 1 0 21,13" },
+            { "pause", "M8,5 V19 M16,5 V19" },
             { "basket", "M5,10 H19 L17.6,19 Q17.4,20 16.2,20 H7.8 Q6.6,20 6.4,19 Z M9,10 L11.5,4 M15,10 L12.5,4 M9.5,13.5 V16.5 M12,13.5 V16.5 M14.5,13.5 V16.5" }
         };
 

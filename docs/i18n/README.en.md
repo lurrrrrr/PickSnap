@@ -1,239 +1,74 @@
-<p align="center">
-  <img src="../../src/assets/PickSnap.png" width="72" height="72" alt="PickSnap icon">
-</p>
+# PickSnap
 
-<h1 align="center">PickSnap</h1>
+**Keep screenshots on a clothesline at the top of your Windows desktop. Save copied text in an envelope.**
 
-<p align="center"><strong>A clothesline for your clipboard</strong> — hang screenshots and copied text along the top edge of your screen; grab, compare and edit them at a glance.</p>
+[Download](https://github.com/lurrrrrr/PickSnap/releases/latest) · [简体中文](../../README.md) · [v2.0.0 changes](../../CHANGELOG.md)
 
-![Screenshots hanging along the top edge of the screen, with the image basket and text envelope on the right](../../docs/assets/shelf-light.png)
+## Free placement and horizontal scrolling
 
-<p align="center">
-  <a href="https://github.com/lurrrrrr/PickSnap/releases/latest"><strong>Download the latest version ›</strong></a>
-</p>
+![Free placement](../assets/free-placement.gif)
 
+![Horizontal scrolling](../assets/horizontal-scroll.gif)
 
-<p align="center">
-  <a href="../../README.md">简体中文</a> ·
-  English ·
-  <a href="README.zh-Hant.md">繁體中文</a> ·
-  <a href="README.ja.md">日本語</a>
-</p>
+## See it in action
 
-<p align="center">
-  <a href="https://github.com/lurrrrrr/PickSnap/releases/latest"><img src="https://img.shields.io/github/v/release/lurrrrrr/PickSnap?style=flat-square&label=release&color=2563eb" alt="Latest release"></a>
-  <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-0078d4?style=flat-square" alt="Windows 10 and 11">
-  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-475569?style=flat-square" alt="MIT license"></a>
-</p>
+### Collect, pin, return
 
----
+Screenshots and copied images appear on the rope. Click a clip to turn an image into an always-on-top reference; click its pin to return it. Drag to move a pinned image and use the wheel to zoom.
 
-## One little clip, three ways to use it
+![Collect an image, pin it to the desktop, and return it to the rope](../assets/rope-pin.gif)
 
-Every screenshot on the line hangs from a small aluminium clip. It is not decoration — it is the only handle that image has. Copy it, pin it, move it: it all happens on that clip.
+Click an image to copy it, double-click to open it, or drag it into another app. Drag its clip to rearrange it on the rope; scroll to browse more images.
 
-![Hold the clip above a screenshot and drag left or right to move it freely along the line](../../docs/assets/clip-drag.gif)
+### A basket for images you will use later
 
-| Gesture | Result |
+Taking an image off the rope keeps its file. Preview and select pending images, then hang them back together. The counters show rope capacity, pinned images and pending items.
+
+![Select, preview, and hang images back from the basket](../assets/basket.gif)
+
+### An envelope for copied text
+
+Enable text collection separately. Search saved text, click a row to select it, or double-click truncated long text to read it in full. Copy and delete buttons work independently. Deletions support undo and redo while the panel remains open.
+
+![Select text, read a long entry, and search](../assets/text-envelope.gif)
+
+Demos use sample content and actual application views. Their captions are in Chinese.
+
+## Get started
+
+1. Download and fully extract `PickSnap-2.0.0-windows-x64.zip` from Releases.
+2. Run `Install.cmd`. It installs under `%LOCALAPPDATA%\Programs\PickSnap` and creates a desktop shortcut; no administrator access is needed.
+3. Take a screenshot, move the pointer to the top edge, and click an image to copy it.
+
+The same package also runs directly via `app\PickSnap.exe`. Requires Windows 10/11 x64 and .NET Framework 4.8. The image editor needs Microsoft Edge WebView2 Runtime; the region-capture annotation tools do not.
+
+| Feature | Default interaction |
 | --- | --- |
-| Click the image | Copy to clipboard |
-| Drag the image to another window | Drop it as an image file; the original stays on the line |
-| Click the clip above the image | Detach from the line and drop to the desktop as a pinned image you can drag and scale with the wheel |
-| **Hold the clip and drag left or right** | **Move the image freely along the line** |
+| Show / hide rope | `Ctrl+Alt+T`, tray icon, or dwell at the top edge |
+| Region capture | `Ctrl+Alt+S`; Enter finishes, Esc cancels |
+| Edit an image | Hold the image or choose Edit in its context menu |
+| Collection | Separate image and text switches in the tray and settings |
+| Appearance | Five rope themes; light, dark, or system colors |
+| Multiple displays | Fixed display or follow the pointer; capture on any connected display |
 
-The new order is remembered and restored on the next launch.
+Both shortcuts are customizable. On first use, top-edge activation covers the full width with a 450 ms delay, except the top-right window-button area.
 
-The line can hold far more than one screen: scroll horizontally with the wheel, drag an image to either end to keep the line scrolling, and it settles into alignment when you stop, so no image is left hanging half off the edge.
+## Understand data retention
 
-![Scroll horizontally across the whole line](../../docs/assets/rope-scroll.gif)
+- **Seven-day image cleanup is enabled on first use.** Old collected copies go to the Windows Recycle Bin, including old images still on the rope. Turn cleanup off or save a separate copy for long-term storage. Existing settings are preserved on upgrade.
+- Moving an image into the basket does not delete it. A full rope moves older images into the basket; manual hanging uses only free slots.
+- New image imports are local copies. Deleting legacy external-file records does not delete the external original.
+- Text collection retains the latest 100 entries. Undo history lasts until the text panel closes, up to 20 deletion batches.
+- Content remains local in `data/Captures` and `data/state.json`; `state.json.bak` is the previous configuration backup. Update checks contact GitHub Releases.
 
----
+Windows Snipping Tool edits can replace a recent related image only after the edited bitmap reaches the clipboard, automatically or via Copy. Matching is heuristic; a roughly three-second delay groups related edits. Large changes or older captures may become new images instead.
 
-## Features
+## Updates and removal
 
-**Collecting**
+Open Settings → Updates and uninstall. Checking does not install anything. Confirm “Update and restart” to download, verify and install an update. Network errors and rate limits remain visible.
 
-- Watches the Windows screenshots folder and hangs new screenshots automatically
-- Clipboard images and text can be collected too (separate switches for images and text)
-- "Add image" lets you hang any picture already on your machine
+Uninstall keeps data by default under `%LOCALAPPDATA%\PickSnap\Data`; reinstalling with `Install.cmd` restores it. Deleting current data requires an extra confirmation and is irreversible. For direct execution, the app explains which program folder to delete after exit.
 
-**On the line**
+## Credits
 
-- Click to copy to the clipboard; drag to another window to drop it as an image file
-- Press and hold to annotate: box, arrow, freehand, text, crop, rotate — all processed locally
-- Scroll horizontally with the wheel, or use the arrows at both ends; dragging an image to either end keeps the line scrolling
-- Capacity is derived from screen width (24 images minimum); when it is full, the oldest image goes back to the basket
-- Right-click menu: open, edit, save a copy, open location, put into basket, batch put into basket, move to Recycle Bin, batch move to Recycle Bin — the basket only takes images off the line; only moving to the Recycle Bin deletes them
-
-**Pinned to the desktop**
-
-Click the clip above an image (press and release) and it detaches from the line and drops into an always-on-top window that you can drag and scale with the wheel. Move the mouse to the top center of the pinned image and a thumbtack button appears; click it to hang the image back where it was.
-
-**Image basket**
-
-Keep the screenshots you do not need right now here. Select by clicking or rubber-band, then hang a whole selection back on the line. To take an image off the line, drag it onto the basket icon at the right end, or straight into the basket window if it is open. Turn off image collection and the basket withdraws from the right end of the line (unless auto-hang is off, since new screenshots still land there); it stays reachable from the tray panel.
-
-![Drag an image onto the basket on the right to take it off the line](../../docs/assets/drop-basket.gif)
-
-"Auto-clean images older than 7 days" at the top of the basket window is off by default; when enabled, screenshots older than 7 days are moved to the Recycle Bin (see the FAQ below).
-
-**Text envelope**
-
-Text you copy is collected automatically, with full-text search and one-click copy that preserves line breaks and indentation. After deleting, you have 5 seconds to click "Undo" and put it back. Only the most recent 100 entries are kept. Turn off text collection and the envelope withdraws from the right end; the content stays and remains reachable from the tray panel.
-
-<p align="center"><img src="../../docs/assets/text-window.png" width="330" alt="Text envelope: search box, collected text, copy and delete, with undo after delete"></p>
-
-**Region capture**
-
-`Ctrl+Alt+S` starts a region selection: draw rectangles, ellipses, arrows, freehand strokes, text and mosaic right there. `Enter` confirms, `Esc` cancels.
-
-**Appearance**
-
-Five ropes (classic silver-grey, linen with wooden clips, porcelain, pastel, graphite). Colors can follow the system or stay light or dark. With multiple monitors, pin it to one screen or let it follow the mouse.
-
-<details>
-<summary>Dark mode</summary>
-
-![The line in dark mode](../../docs/assets/shelf-dark.png)
-
-</details>
-
----
-
-## Installation
-
-### 1. Download the installer package (recommended)
-
-1. Open [Releases](https://github.com/lurrrrrr/PickSnap/releases/latest) and download `PickSnap-<version>-windows-x64.zip`
-2. Extract it anywhere and double-click `Install.cmd`
-3. The installer puts the files in `%LOCALAPPDATA%\Programs\PickSnap`, creates a desktop shortcut and starts the app
-
-No administrator rights and no system services. There are three ways to uninstall: tray → "More → Uninstall", Windows "Settings → Apps", or run `uninstall.ps1` inside the install folder. Uninstalling removes the program only and **keeps your collected screenshots and settings** by default; the confirmation dialog also offers to delete them, with a second confirmation so images can't be lost by accident.
-
-After installing, the extracted folder is no longer needed and can be deleted entirely: the app lives in the fixed folder above, and uninstalling only cleans that folder — it never touches the extracted one (keep the downloaded zip if you want to reinstall later). If you keep your data when uninstalling, it is staged in `%LOCALAPPDATA%\PickSnap\Data` and automatically adopted again on the next install, so there is always just one `data` folder.
-
-You can also run it without `Install.cmd`: double-click `app\PickSnap.exe`. The first launch creates a desktop shortcut, and you can rebuild it any time from the tray under "More → Create desktop shortcut".
-
-**Requirements**: Windows 10 / 11 64-bit; .NET Framework 4.8 (built into Windows 10 1809 and later); the built-in editor needs [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (built into Windows 11; some Windows 10 machines need a separate install — annotation in region capture still works without it).
-
-### 2. Build from source
-
-```powershell
-git clone https://github.com/lurrrrrr/PickSnap.git
-cd PickSnap
-./scripts/build.ps1
-```
-
-Source in `src\`, third-party components in `vendor\`, build and packaging scripts in `scripts\`. Output goes to `build\`; run `build\PickSnap.exe`. Use `./scripts/build.ps1 -Package` to produce the release zip.
-
----
-
-## Three steps to start
-
-1. **Capture**: `Win+Shift+S`, `PrtScn`, or WeChat `Alt+A` — no need to save the file
-2. **Slide it down**: move the mouse to the very top edge and the line slides down with your screenshots
-3. **Take it**: click to copy, or drag straight into a chat window, document or folder
-
-<details>
-<summary>Shortcuts and common actions</summary>
-
-| Action | How |
-| --- | --- |
-| Show / hide the line | `Ctrl+Alt+T`, or click the tray icon |
-| Region capture | `Ctrl+Alt+S`, or click "Region capture" at the top of the tray panel |
-| Change the capture shortcut | Tray → "More" → "Capture shortcut" |
-| Copy an image | Click it |
-| Open the original | Double-click it |
-| Move it along the line | Hold the clip above the image and drag left or right |
-| Pin to desktop / hang back | Click the clip / click the thumbtack on the pinned image |
-| Scale the pinned image | Scroll wheel |
-| Move the pinned image | Drag it |
-| Annotate | Press and hold the image, or right-click → "Edit" |
-| Put into basket | Right-click → "Put into basket", or drag onto the basket icon |
-| Open the image basket | Click the basket at the right end |
-| Open the text envelope | Click the envelope at the right end |
-| Choose a screen | Right-click the tray icon → "Display screen" |
-| Reveal when the mouse reaches the top | Tray → "More" → "Reveal when the mouse reaches the top" (on by default; when off, use `Ctrl+Alt+T` or the tray icon) |
-| Appearance, run at startup, check for updates | Right-click the tray icon |
-
-</details>
-
----
-
-## Data and privacy
-
-Everything stays on your machine: images live in `data\Captures` under the program folder, settings and text in `data\state.json`. Nothing is uploaded; checking for updates manually, plus an automatic check every 12 hours, only reads version information from GitHub Releases.
-
-Images do not expire on their own: the line has limited room, and images that do not fit go back to the basket while the files stay on disk — you decide when to clean up (the optional auto-clean only moves expired copies to the Recycle Bin). The text envelope keeps the most recent 100 entries; older text is pushed out by new copies.
-
----
-
-## FAQ
-
-<details>
-<summary>Screenshots do not appear automatically?</summary>
-
-By default only the Windows screenshots folder is watched. `Win+Shift+S`, `PrtScn` and WeChat capture put images on the clipboard instead, so turn on "Collect images" in the tray panel under "Clipboard collection" first.
-
-If "New images hang automatically" is off, new screenshots go to the image basket; select them and click "Hang on line".
-
-</details>
-
-<details>
-<summary>What is the difference between "remove" and "delete"?</summary>
-
-"Put into basket" only takes the image off the line — the file and its record stay, and you can hang it back any time. Delete moves the collected copy to the Recycle Bin; for original screenshots in the screenshots folder it only drops PickSnap's record and leaves the file untouched.
-
-</details>
-
-<details>
-<summary>The line keeps scrolling when I drag to an end?</summary>
-
-Dragging the cursor to the left or right edge scrolls the line continuously; release once the image is back in view and scrolling stops immediately, settling into alignment with an image edge.
-
-</details>
-
-<details>
-<summary>Are images cleaned up automatically?</summary>
-
-**No images are deleted automatically by default.**
-
-If you want it to tidy up: open the image basket and use "Auto-clean images older than 7 days" at the top right (off by default). Turning it on runs a check immediately, then checks at every launch and every 6 hours; images older than 7 days go to the Recycle Bin, so they can still be restored. Manually added originals outside the collection folder only lose their record, never the file. Age is judged from the file's current modified time, so annotated images are not cleaned by mistake. Flip the same switch to turn it off.
-
-</details>
-
-<details>
-<summary>Which image formats are supported?</summary>
-
-PNG, JPG, BMP, GIF, TIF. GIF and TIF use only the first frame for editing; crop, rotate and mosaic apply to the whole image.
-
-</details>
-
-<details>
-<summary>How much can it hold, and what happens when full?</summary>
-
-Line capacity is derived from screen width, 24 images minimum. Images that do not fit wait in the basket; nothing is discarded.
-
-The text envelope keeps the most recent 100 entries; older ones are pushed out automatically — clipboard text is throwaway by nature, so it just rolls off.
-
-Once the image basket passes **100 images**, you get one reminder per new screenshot. PickSnap **never deletes images on its own** — you choose what to delete and when: multi-select in the basket and delete; deleted copies go to the Recycle Bin.
-
-</details>
-
-<details>
-<summary>How do I update?</summary>
-
-Right-click the tray icon → "More" → "Check for updates", then restart once the download finishes. Images, settings and the run-at-startup entry are preserved. If you are already on the latest version it says so; if GitHub cannot be reached, the window shows your current version, makes clear this does not mean a new version exists, and offers an "Open download page" button.
-
-</details>
-
----
-
-## Credits and license
-
-This project is derived from the following open-source projects — thanks to their authors:
-
-- [Tendedero](https://github.com/alejandrobujan/tendedero): the original macOS project by [Alejandro Buján](https://github.com/alejandrobujan)
-- [PicRope](https://github.com/Renly1994/PicRope): the Windows port by [Renly1994](https://github.com/Renly1994)
-
-Original copyright belongs to Alejandro Buján and is released under the MIT license; the modifications in this repository use MIT as well. Under the upstream "name and icon" clause, this project uses its own name "PickSnap / 拾帧" and its own icon. The full provenance chain and third-party notices are in [NOTICE](../../NOTICE); license terms are in [LICENSE](../../LICENSE).
+Based on [Tendedero](https://github.com/alejandrobujan/tendedero) and [PicRope](https://github.com/Renly1994/PicRope). Thanks to Alejandro Buján, Renly1994 and upstream contributors. See [LICENSE](../../LICENSE) and [NOTICE](../../NOTICE).

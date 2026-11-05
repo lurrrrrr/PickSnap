@@ -112,9 +112,9 @@ namespace ScreenLine
             };
             Frame.MouseLeftButtonUp += delegate(object sender, MouseButtonEventArgs e)
             {
-                e.Handled = true; moving = false; LiftPin(false); Frame.ReleaseMouseCapture();
+                e.Handled = true; moving = false; LiftPin(false); Frame.ReleaseMouseCapture(); Position();
             };
-            Frame.LostMouseCapture += delegate { if (moving) { moving = false; LiftPin(false); } };
+            Frame.LostMouseCapture += delegate { if (moving) { moving = false; LiftPin(false); Position(); } };
             PreviewMouseWheel += ResizePicture;
             SourceInitialized += delegate
             {
@@ -130,6 +130,7 @@ namespace ScreenLine
             Loaded += delegate { dropStarted = clock.Elapsed.TotalSeconds; StartRendering(); };
             Closing += delegate { ReturnBounds = PhotoRect(); };
             Closed += delegate { CompositionTarget.Rendering -= Render; };
+            DpiChanged += delegate { placedLeft = int.MinValue; Dispatcher.BeginInvoke(new Action(Position)); };
             bitmap = picture;
             photo.Source = bitmap;
             pictureScale = Math.Min(1, Math.Min(Math.Min(560, screen.WorkingArea.Width / dpi * 0.75) / bitmap.PixelWidth,
@@ -138,7 +139,7 @@ namespace ScreenLine
             double landingHeight = (bitmap.PixelHeight * pictureScale + 50) * dpi;
             landing = new Point(
                 Math.Max(screen.WorkingArea.Left + landingWidth / 2, Math.Min(screen.WorkingArea.Right - landingWidth / 2, fallStart.X)),
-                Math.Max(screen.WorkingArea.Top + 17 * dpi, Math.Min(screen.WorkingArea.Bottom - landingHeight + 17 * dpi, fallStart.Y + Math.Max(180 * dpi, screen.WorkingArea.Height * 0.25))));
+                Math.Max(screen.WorkingArea.Top + 17 * dpi, Math.Min(screen.WorkingArea.Bottom - landingHeight + 17 * dpi, fallStart.Y + Math.Max(120 * dpi, screen.WorkingArea.Height * 0.16))));
             Width = bitmap.PixelWidth * pictureScale + 38;
             Height = bitmap.PixelHeight * pictureScale + 50;
             zoom.ScaleX = (startWidth + 14) / (Width - 24);
@@ -166,8 +167,8 @@ namespace ScreenLine
             PinButton.IsEnabled = false;
             ToolTipService.SetIsEnabled(PinButton, false);
             ((ToolTip)PinButton.ToolTip).IsOpen = false;
-            pinLift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-10, TimeSpan.FromSeconds(0.14)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
-            var fade = new DoubleAnimation(0, TimeSpan.FromSeconds(0.14));
+            pinLift.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-5, TimeSpan.FromSeconds(0.09)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            var fade = new DoubleAnimation(0, TimeSpan.FromSeconds(0.09));
             fade.Completed += delegate { Close(); };
             PinButton.BeginAnimation(OpacityProperty, fade);
         }
@@ -208,8 +209,7 @@ namespace ScreenLine
         {
             double now = clock.Elapsed.TotalSeconds;
             double elapsed = Math.Max(0, now - dropStarted);
-            double t = Math.Min(1, elapsed / 0.40);
-            double progress = t * t * t * (10 + t * (-15 + 6 * t));
+            double progress = MotionTiming.Progress(elapsed / MotionTiming.PinDrop);
             Width = bitmap.PixelWidth * pictureScale + 38;
             Height = bitmap.PixelHeight * pictureScale + 50;
             zoom.ScaleX = (startWidth + 14) / (Width - 24) * (1 - progress) + progress;
@@ -217,12 +217,12 @@ namespace ScreenLine
             turn.Angle = initialTilt * (1 - progress);
             if (!IsHitTestVisible)
             {
-                double settle = Math.Max(0, Math.Min(1, (elapsed - 0.40) / 0.14));
+                double settle = MotionTiming.Progress((elapsed - MotionTiming.PinDrop) / MotionTiming.PinSettle);
                 double bounce = Math.Sin(Math.PI * settle);
-                anchor = fallStart + (landing - fallStart) * progress - new Vector(0, 2 * displayScale * bounce * bounce);
+                anchor = fallStart + (landing - fallStart) * progress - new Vector(0, 1.2 * displayScale * bounce * bounce);
                 PinButton.Opacity = settle;
                 pinLift.Y = -6 * (1 - settle);
-                if (elapsed >= 0.54) IsHitTestVisible = true;
+                if (elapsed >= MotionTiming.PinDrop + MotionTiming.PinSettle) IsHitTestVisible = true;
             }
             Position();
             if (IsHitTestVisible)
@@ -234,11 +234,17 @@ namespace ScreenLine
 
         void Position()
         {
-            var screen = IsHitTestVisible ? Forms.Screen.FromPoint(new System.Drawing.Point((int)anchor.X, (int)anchor.Y)) : display;
+            var screen = IsHitTestVisible ? (moving ? WindowsNative.ScreenAtPointer() : Forms.Screen.FromPoint(new System.Drawing.Point((int)anchor.X, (int)anchor.Y))) : display;
             double dpi = IsHitTestVisible ? WindowsNative.MonitorScale(screen) : displayScale;
+            if (IsHitTestVisible && !moving)
+            {
+                double maximum = Math.Min((screen.WorkingArea.Width / dpi - 40) / bitmap.PixelWidth, (screen.WorkingArea.Height / dpi - 52) / bitmap.PixelHeight);
+                if (pictureScale > maximum) { pictureScale = Math.Max(0.001, maximum); Width = bitmap.PixelWidth * pictureScale + 38; Height = bitmap.PixelHeight * pictureScale + 50; }
+            }
+            var cache = Frame.CacheMode as BitmapCache; if (cache != null && Math.Abs(cache.RenderAtScale - dpi) > 0.001) cache.RenderAtScale = dpi;
             int width = (int)Math.Round(Width * dpi), height = (int)Math.Round(Height * dpi);
             int left = (int)Math.Round(anchor.X - width / 2.0), top = (int)Math.Round(anchor.Y - 17 * dpi);
-            if (IsHitTestVisible)
+            if (IsHitTestVisible && !moving)
             {
                 left = Math.Max(screen.WorkingArea.Left, Math.Min(screen.WorkingArea.Right - width, left));
                 top = Math.Max(screen.WorkingArea.Top, Math.Min(screen.WorkingArea.Bottom - height, top));

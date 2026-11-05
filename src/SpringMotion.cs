@@ -18,6 +18,12 @@ namespace ScreenLine
 
         public void Snap(double value) { Position = Target = value; Velocity = 0; }
 
+        public void Kick(double amplitude)
+        {
+            double peakTime = Math.Atan(frequency / decay) / frequency;
+            Velocity = amplitude * frequency / (Math.Exp(-decay * peakTime) * Math.Sin(frequency * peakTime));
+        }
+
         public void Step(double seconds)
         {
             if (seconds <= 0) return;

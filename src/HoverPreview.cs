@@ -166,7 +166,7 @@ namespace ScreenLine
         // 入场动效：从卡片一侧轻微放大到原尺寸，配合透明度淡入，避免预览生硬地蹦出来。
         readonly ScaleTransform entrance = new ScaleTransform(1, 1);
         readonly Image image = new Image { Stretch = Stretch.Uniform, Margin = new Thickness(28),
-            Effect = new DropShadowEffect { Color = Colors.Black, BlurRadius = 32, ShadowDepth = 10, Direction = 270, Opacity = 0.8 } };
+            Effect = new DropShadowEffect { Color = Colors.Black, BlurRadius = 22, ShadowDepth = 6, Direction = 270, Opacity = 0.3 } };
         readonly Border error = new Border { Background = LightTheme.Brush("#FFFFFF"), CornerRadius = new CornerRadius(8),
             Child = new TextBlock { Text = "图片暂时无法预览", Foreground = LightTheme.Brush("#65717F"), Margin = new Thickness(22, 18, 22, 18) } };
         readonly Grid body = new Grid();
@@ -174,7 +174,7 @@ namespace ScreenLine
 
         public PreviewWindow(ShelfWindow owner)
         {
-            Owner = owner; Title = "图片预览 · 拾帧";
+            Owner = owner; Title = "图片预览 · PickSnap";
             WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
             AllowsTransparency = true; Background = Brushes.Transparent;
             LightTheme.SoftwareRender(this);
@@ -194,7 +194,7 @@ namespace ScreenLine
             Opacity = 0;
             entrance.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             entrance.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-            entrance.ScaleX = entrance.ScaleY = 0.94;
+            entrance.ScaleX = entrance.ScaleY = 0.975;
             image.Source = picture; error.Visibility = picture == null ? Visibility.Visible : Visibility.Collapsed;
             image.Visibility = picture == null ? Visibility.Collapsed : Visibility.Visible;
             if (picture != null)

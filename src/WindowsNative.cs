@@ -10,7 +10,9 @@ namespace ScreenLine
     {
         public const int ShowMessage = 0x8001;
         public const int ExitMessage = 0x8002;
-        public const string MessageWindow = "ScreenLine.Windows.Messages";
+        public const int SettingsMessage = 0x8003;
+        public const int UninstallMessage = 0x8004;
+        public const string MessageWindow = "PickSnap.Windows.Messages";
         public static readonly IntPtr MessageParent = new IntPtr(-3);
 
         [StructLayout(LayoutKind.Sequential)]
@@ -29,7 +31,14 @@ namespace ScreenLine
         delegate bool WindowEnumerator(IntPtr window, IntPtr parameter);
         [DllImport("user32.dll")] static extern bool EnumWindows(WindowEnumerator callback, IntPtr parameter);
         [DllImport("user32.dll")] static extern bool IsIconic(IntPtr window);
+        [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr window);
         [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out int value, int size);
+        [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
+        public static void SetTitleTheme(IntPtr window, bool dark)
+        {
+            try { int value = dark ? 1 : 0; if (DwmSetWindowAttribute(window, 20, ref value, sizeof(int)) != 0) DwmSetWindowAttribute(window, 19, ref value, sizeof(int)); }
+            catch (DllNotFoundException) { } catch (EntryPointNotFoundException) { }
+        }
         [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr window, int index);
         [DllImport("user32.dll")] static extern int SetWindowLong(IntPtr window, int index, int value);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool SetProp(IntPtr window, string name, IntPtr value);
@@ -162,15 +171,16 @@ namespace ScreenLine
         public static bool FullScreen(Forms.Screen screen, IntPtr overlay)
         {
             IntPtr foreground = GetForegroundWindow();
-            if (foreground == IntPtr.Zero || foreground == overlay || foreground == GetShellWindow()) return false;
+            if (foreground == IntPtr.Zero || foreground == overlay || foreground == GetShellWindow() || WindowProcess(foreground) == WindowProcess(overlay)) return false;
             var name = new StringBuilder(128);
             GetClassName(foreground, name, name.Capacity);
             string type = name.ToString();
             if (type == "WorkerW" || type == "Progman" || type.StartsWith("Shell_")) return false;
+            // 普通最大化窗口（包括隐藏任务栏时）保留标题栏，不能当作全屏游戏或视频。
             Rectangle rectangle;
             if (!GetWindowRect(foreground, out rectangle)) return false;
             var bounds = screen.Bounds;
-            return rectangle.Left <= bounds.Left && rectangle.Top <= bounds.Top && rectangle.Right >= bounds.Right && rectangle.Bottom >= bounds.Bottom;
+            return RevealPolicy.CoversScreen(bounds, System.Drawing.Rectangle.FromLTRB(rectangle.Left, rectangle.Top, rectangle.Right, rectangle.Bottom), IsZoomed(foreground), (GetWindowLong(foreground, -16) & 0x00C00000) == 0x00C00000);
         }
 
         public static string ScreenshotFolder()
@@ -184,11 +194,15 @@ namespace ScreenLine
             return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Screenshots");
         }
 
-        public static void ShowExisting()
+        public static void ShowExisting(bool settings = false)
         {
-            PostMessage(FindWindowEx(MessageParent, IntPtr.Zero, null, MessageWindow), ShowMessage, IntPtr.Zero, IntPtr.Zero);
+            PostMessage(FindWindowEx(MessageParent, IntPtr.Zero, null, MessageWindow), settings ? SettingsMessage : ShowMessage, IntPtr.Zero, IntPtr.Zero);
         }
 
+        public static void ShowUninstall()
+        {
+            PostMessage(FindWindowEx(MessageParent, IntPtr.Zero, null, MessageWindow), UninstallMessage, IntPtr.Zero, IntPtr.Zero);
+        }
         public static void RequestExit()
         {
             PostMessage(FindWindowEx(MessageParent, IntPtr.Zero, null, MessageWindow), ExitMessage, IntPtr.Zero, IntPtr.Zero);
@@ -198,39 +212,60 @@ namespace ScreenLine
     internal sealed class WindowsEvents : IDisposable
     {
         readonly HwndSource source;
-        public readonly bool ShortcutAvailable;
+        public bool ShortcutAvailable { get; private set; }
         public bool CaptureShortcutAvailable { get; private set; }
         uint captureModifiers, captureKey;
         int captureId = 2;
+        int toggleId = 1;
+        uint toggleModifiers, toggleKey;
         public event Action ClipboardChanged;
         public event Action ToggleRequested;
         public event Action ExitRequested;
         public event Action CaptureRequested;
+        public event Action SettingsRequested;
+        public event Action UninstallRequested;
 
-        public bool RegisterCapture(uint modifiers, uint key)
+        public bool RegisterCapture(uint modifiers, uint key, Action persist = null)
         {
             if (modifiers == 0 || (modifiers & ~15u) != 0 || key < 0x20 || key > 0xFE) return false;
-            if (CaptureShortcutAvailable && modifiers == captureModifiers && key == captureKey) return true;
+            if (ShortcutAvailable && modifiers == toggleModifiers && key == toggleKey) return false;
+            if (CaptureShortcutAvailable && modifiers == captureModifiers && key == captureKey) { if (persist != null) persist(); return true; }
             int next = captureId == 2 ? 3 : 2;
             if (!WindowsNative.RegisterHotKey(source.Handle, next, modifiers | 0x4000, key)) return false;
+            try { if (persist != null) persist(); } catch { WindowsNative.UnregisterHotKey(source.Handle, next); throw; }
             if (CaptureShortcutAvailable) WindowsNative.UnregisterHotKey(source.Handle, captureId);
             captureId = next; captureModifiers = modifiers; captureKey = key; CaptureShortcutAvailable = true;
             return true;
         }
 
-        public WindowsEvents()
+        public bool RegisterToggle(uint modifiers, uint key, Action persist = null)
+        {
+            if (modifiers == 0 || (modifiers & ~15u) != 0 || key < 0x20 || key > 0xFE) return false;
+            if (CaptureShortcutAvailable && modifiers == captureModifiers && key == captureKey) return false;
+            if (ShortcutAvailable && modifiers == toggleModifiers && key == toggleKey) { if (persist != null) persist(); return true; }
+            int next = toggleId == 1 ? 4 : 1;
+            if (!WindowsNative.RegisterHotKey(source.Handle, next, modifiers | 0x4000, key)) return false;
+            try { if (persist != null) persist(); } catch { WindowsNative.UnregisterHotKey(source.Handle, next); throw; }
+            if (ShortcutAvailable) WindowsNative.UnregisterHotKey(source.Handle, toggleId);
+            toggleId = next; toggleModifiers = modifiers; toggleKey = key; ShortcutAvailable = true;
+            return true;
+        }
+
+        public WindowsEvents(bool registerToggle = true)
         {
             source = new HwndSource(new HwndSourceParameters(WindowsNative.MessageWindow) { ParentWindow = WindowsNative.MessageParent });
             source.AddHook(Receive);
             if (!WindowsNative.AddClipboardFormatListener(source.Handle)) throw new System.ComponentModel.Win32Exception();
-            ShortcutAvailable = WindowsNative.RegisterHotKey(source.Handle, 1, 0x4003, (uint)'T');
+            if (registerToggle) RegisterToggle(3, (uint)'T');
         }
 
         IntPtr Receive(IntPtr window, int message, IntPtr w, IntPtr l, ref bool handled)
         {
             if (message == 0x031D && ClipboardChanged != null) ClipboardChanged();
-            if ((message == WindowsNative.ShowMessage || message == 0x0312 && w.ToInt32() == 1) && ToggleRequested != null) ToggleRequested();
+            if ((message == WindowsNative.ShowMessage || message == 0x0312 && w.ToInt32() == toggleId) && ToggleRequested != null) ToggleRequested();
             if (message == 0x0312 && w.ToInt32() == captureId && CaptureRequested != null) CaptureRequested();
+            if (message == WindowsNative.SettingsMessage && SettingsRequested != null) SettingsRequested();
+            if (message == WindowsNative.UninstallMessage && UninstallRequested != null) UninstallRequested();
             if (message == WindowsNative.ExitMessage && ExitRequested != null) ExitRequested();
             return IntPtr.Zero;
         }
@@ -238,7 +273,7 @@ namespace ScreenLine
         public void Dispose()
         {
             WindowsNative.RemoveClipboardFormatListener(source.Handle);
-            if (ShortcutAvailable) WindowsNative.UnregisterHotKey(source.Handle, 1);
+            if (ShortcutAvailable) WindowsNative.UnregisterHotKey(source.Handle, toggleId);
             if (CaptureShortcutAvailable) WindowsNative.UnregisterHotKey(source.Handle, captureId);
             source.Dispose();
         }

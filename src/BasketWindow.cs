@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -58,7 +58,7 @@ namespace ScreenLine
           <Border x:Name='Surface' Background='Transparent' BorderBrush='Transparent' BorderThickness='1' CornerRadius='8'><ContentPresenter HorizontalAlignment='Stretch'/></Border>
         </ControlTemplate>"));
         readonly Gallery gallery;
-        readonly Action<bool> setAutoHang;
+
         readonly Action<CaptureItem> hang;
         readonly Action<ShotAction, CaptureItem> act;
         readonly HashSet<string> selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -84,12 +84,18 @@ namespace ScreenLine
         readonly HashSet<Image> loadingPictures = new HashSet<Image>();
         static readonly SemaphoreSlim thumbnailSlots = new SemaphoreSlim(2, 2);
         static readonly SemaphoreSlim previewSlot = new SemaphoreSlim(1, 1);
-        internal readonly Button PendingTab, AllTab, HangButton, DeleteButton, SelectAllButton;
-        internal readonly CheckBox AutoHang;
+        internal readonly Button PendingTab, AllTab, HangButton, DeleteButton;
+        internal readonly CheckBox SelectAllBox;
+        internal readonly CheckBox AutoPurgeSwitch;
+        bool selectionSync;
+        bool refreshQueued;
+        readonly Grid browserContent = new Grid();
+        Border previewPane;
+        readonly Dictionary<CaptureItem, ImageContent> displayedImages = new Dictionary<CaptureItem, ImageContent>();
         readonly Func<string, bool> isPinned;
         readonly Func<int> ropeRoom;
         readonly Func<int> ropeCapacity;
-        bool pendingOnly = true, refreshing, mounting, closed;
+        bool pendingOnly = true, mounting, closed;
         CaptureItem previewItem;
         ImageContent previewContent;
         int previewVersion;
@@ -100,15 +106,14 @@ namespace ScreenLine
         internal int VisibleCount { get { return choices.Count; } }
         internal Button ChoiceFor(string path) { return choices[path]; }
 
-        public BasketWindow(Gallery gallery, Action<bool> setAutoHang, Action<CaptureItem> hang, Action<ShotAction, CaptureItem> act, Func<string, bool> isPinned = null, Func<int> ropeRoom = null, Func<int> ropeCapacity = null,
-            Func<bool> getAutoPurge = null, Action<bool> setAutoPurge = null)
+        public BasketWindow(Gallery gallery, Action<CaptureItem> hang, Action<ShotAction, CaptureItem> act, Func<string, bool> isPinned = null, Func<int> ropeRoom = null, Func<int> ropeCapacity = null, Action<bool> setAutoPurge = null)
         {
-            this.gallery = gallery; this.setAutoHang = setAutoHang; this.hang = hang; this.act = act; this.isPinned = isPinned; this.ropeRoom = ropeRoom; this.ropeCapacity = ropeCapacity;
-            Title = "图片篮子 · 拾帧";
+            this.gallery = gallery; this.hang = hang; this.act = act; this.isPinned = isPinned; this.ropeRoom = ropeRoom; this.ropeCapacity = ropeCapacity;
+            Title = "图片篮子 · PickSnap";
             WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
             AllowsTransparency = true; Background = Brushes.Transparent;
             ShowInTaskbar = false; Topmost = true;
-            FontFamily = new FontFamily("Microsoft YaHei UI");
+            FontFamily = new FontFamily("Segoe UI, Microsoft YaHei");
             UseLayoutRounding = true;
             TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
             AutomationProperties.SetAutomationId(this, "PictureBasket");
@@ -118,7 +123,7 @@ namespace ScreenLine
             // 窗口顶边要落在绳子（顶部 220 DIP 的置顶横带）下方：贴太近时标题栏会被绳子压住，
             // 鼠标都被绳子接走，整窗看起来像"钉死"。屏幕矮时优先压缩高度，保证底部不越界。
             double room = screen.WorkingArea.Height / dpi - 252;
-            Height = Math.Min(660, Math.Max(380, room));
+            Height = screen.WorkingArea.Height / dpi < 650 ? Math.Max(220, screen.WorkingArea.Height / dpi - 32) : Math.Min(660, Math.Max(380, room));
             MinWidth = Math.Min(720, Width); MinHeight = Math.Min(420, Height);
 
             var body = new Grid();
@@ -135,7 +140,7 @@ namespace ScreenLine
             {
                 string[] paths = e.Data.GetData(DataFormats.FileDrop) as string[];
                 bool match = paths != null && paths.Any(path => gallery.Contains(path));
-                e.Effects = match ? DragDropEffects.Move : DragDropEffects.None;
+                e.Effects = match ? DragDropEffects.Copy : DragDropEffects.None;
                 e.Handled = true;
                 card.BorderBrush = LightTheme.Brush(match ? "#2463AE" : "#E0E4EA");
             };
@@ -160,55 +165,17 @@ namespace ScreenLine
             title.Children.Add(new TextBlock { Text = "图片篮子", FontSize = 18, FontWeight = FontWeights.SemiBold, Foreground = LightTheme.Brush("#283343"), VerticalAlignment = VerticalAlignment.Center });
             heading.Children.Add(title);
             var tools = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-            tools.Children.Add(new TextBlock { Text = "新图片自动上绳", FontSize = 12, Foreground = LightTheme.Brush("#65717F"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
-            AutoHang = new CheckBox { VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand, ToolTip = "关闭后，新图片仍收进图片篮子" };
-            AutoHang.Template = (ControlTemplate)XamlReader.Parse(LightTheme.Sheet(@"<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='CheckBox'>
-              <Border x:Name='Track' Width='38' Height='22' CornerRadius='11' Background='#B8C0CC' BorderBrush='Transparent' BorderThickness='1'>
-                <Border x:Name='Knob' Width='16' Height='16' CornerRadius='8' Background='White' HorizontalAlignment='Left' Margin='2,0,2,0'/>
-              </Border><ControlTemplate.Triggers>
-                <!-- 与托盘开关同一套做法：滑块 130ms 缓出滑行 16px，切换不再瞬间跳位。 -->
-                <Trigger Property='IsChecked' Value='True'>
-                  <Setter TargetName='Track' Property='Background' Value='#2463AE'/>
-                  <Setter TargetName='Knob' Property='Margin' Value='18,0,2,0'/>
-                  <Trigger.EnterActions>
-                    <BeginStoryboard>
-                      <Storyboard>
-                        <ThicknessAnimation Storyboard.TargetName='Knob' Storyboard.TargetProperty='Margin' From='2,0,2,0' To='18,0,2,0' Duration='0:0:0.13'>
-                          <ThicknessAnimation.EasingFunction><CubicEase EasingMode='EaseOut'/></ThicknessAnimation.EasingFunction>
-                        </ThicknessAnimation>
-                      </Storyboard>
-                    </BeginStoryboard>
-                  </Trigger.EnterActions>
-                  <Trigger.ExitActions>
-                    <BeginStoryboard>
-                      <Storyboard>
-                        <ThicknessAnimation Storyboard.TargetName='Knob' Storyboard.TargetProperty='Margin' To='2,0,2,0' Duration='0:0:0.13'>
-                          <ThicknessAnimation.EasingFunction><CubicEase EasingMode='EaseOut'/></ThicknessAnimation.EasingFunction>
-                        </ThicknessAnimation>
-                      </Storyboard>
-                    </BeginStoryboard>
-                  </Trigger.ExitActions>
-                </Trigger>
-              </ControlTemplate.Triggers></ControlTemplate>"));
-            AutomationProperties.SetName(AutoHang, "新图片自动上绳");
-            AutoHang.Checked += AutoChanged; AutoHang.Unchecked += AutoChanged;
-            tools.Children.Add(AutoHang);
-            if (getAutoPurge != null && setAutoPurge != null)
+            tools.Children.Add(new TextBlock { Text = "自动清理 7 天前的旧图", FontSize = 12, Foreground = LightTheme.Brush("#65717F"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 8, 0) });
+            AutoPurgeSwitch = new SwitchBox { Style = LightTheme.SwitchStyle, IsChecked = gallery.Store.State.AutoPurge, VerticalAlignment = VerticalAlignment.Center };
+            AutomationProperties.SetName(AutoPurgeSwitch, "自动清理 7 天前的旧图");
+            AutoPurgeSwitch.ToolTip = "超过 7 天未修改的图片会移入回收站。";
+            AutoPurgeSwitch.Click += delegate
             {
-                // 旧图清理收敛为篮子里的一句话规则：超过 7 天的截图自动移到回收站；开关状态由 App 持久保存。
-                // 放在头部「新图片自动上绳」左侧，两个开关并排。
-                var purgeLabel = new TextBlock { Text = "自动清理 7 天前的旧图", FontSize = 12, Foreground = LightTheme.Brush("#65717F"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
-                var autoPurge = new CheckBox { VerticalAlignment = VerticalAlignment.Center, Cursor = Cursors.Hand,
-                    ToolTip = "开启后：超过 7 天的截图自动移到回收站，开启时立即检查一次，之后启动时和每 6 小时检查一次。只处理收集文件夹里的副本，外部添加的原图只移除记录、不删文件。" };
-                autoPurge.Template = AutoHang.Template;
-                autoPurge.IsChecked = getAutoPurge();
-                AutomationProperties.SetName(autoPurge, "自动清理 7 天前的旧图");
-                autoPurge.Checked += delegate { setAutoPurge(true); };
-                autoPurge.Unchecked += delegate { setAutoPurge(false); };
-                tools.Children.Insert(0, autoPurge);
-                tools.Children.Insert(0, purgeLabel);
-                ((TextBlock)tools.Children[2]).Margin = new Thickness(26, 0, 10, 0);
-            }
+                try { if (setAutoPurge != null) setAutoPurge(AutoPurgeSwitch.IsChecked == true); }
+                catch (Exception error) { gallery.Store.Log(error); MessageBox.Show("清理设置未保存，请重试。", "PickSnap"); }
+                AutoPurgeSwitch.IsChecked = gallery.Store.State.AutoPurge;
+            };
+            tools.Children.Add(AutoPurgeSwitch);
             var close = LightTheme.Button("", Close, "quiet"); close.Content = LightTheme.CloseIcon();
             close.Width = close.Height = 28; close.MinWidth = 0; close.Padding = new Thickness(0); close.Margin = new Thickness(22, 0, 0, 0);
             AutomationProperties.SetName(close, "关闭图片篮子"); tools.Children.Add(close); Grid.SetColumn(tools, 1); heading.Children.Add(tools);
@@ -219,14 +186,15 @@ namespace ScreenLine
             AllTab = LightTheme.Button("全部", delegate { pendingOnly = false; Refresh(); });
             PendingTab.Margin = new Thickness(0, 0, 10, 0); tabs.Children.Add(PendingTab); tabs.Children.Add(AllTab);
             var tabRow = new Grid { Margin = new Thickness(22, 6, 22, 8) };
+            tabRow.ColumnDefinitions.Add(new ColumnDefinition()); tabRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             tabRow.Children.Add(tabs);
             summary.HorizontalAlignment = HorizontalAlignment.Right;
-            summary.ToolTip = "绳上：当前挂在绳子上的张数，一屏放不下时可用滚轮或绳子两端的圆形箭头横向查看；贴图：钉在桌面上的张数；待挂：篮子里还没上绳的张数。绳子挂满后，最早的一张会自动退回这里。";
-            tabRow.Children.Add(summary);
+            summary.ToolTip = "绳上：已挂数量 / 容量；贴图：桌面上的图片；待挂：尚未挂上的图片。";
+            Grid.SetColumn(summary, 1); tabRow.Children.Add(summary);
             var tabBar = new Border { BorderBrush = LightTheme.Brush("#E8EBEF"), BorderThickness = new Thickness(0, 0, 0, 1), Child = tabRow };
             Grid.SetRow(tabBar, 1); body.Children.Add(tabBar);
 
-            var content = new Grid { ClipToBounds = true };
+            var content = browserContent; content.ClipToBounds = true;
             content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
             content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
             var left = new Grid { Margin = new Thickness(16, 10, 12, 12), ClipToBounds = true };
@@ -309,7 +277,7 @@ namespace ScreenLine
             previewBody.ToolTip = "双击打开原图";
             var previewPanel = new Border { Background = LightTheme.Brush("#F1F4F8"), CornerRadius = new CornerRadius(9), Margin = new Thickness(12, 10, 20, 12), Child = previewBody };
             var right = new Border { BorderBrush = LightTheme.Brush("#E8EBEF"), BorderThickness = new Thickness(1, 0, 0, 0), Child = previewPanel };
-            Grid.SetColumn(right, 1); content.Children.Add(right);
+            previewPane = right; Grid.SetColumn(right, 1); content.Children.Add(right);
             Grid.SetRow(content, 2); body.Children.Add(content);
 
             var footer = new Grid { Margin = new Thickness(24, 0, 36, 0) };
@@ -317,27 +285,25 @@ namespace ScreenLine
             footer.ColumnDefinitions.Add(new ColumnDefinition());
             footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            SelectAllButton = LightTheme.Button("全选", SelectAll);
-            SelectAllButton.Tag = "select";
-            SelectAllButton.Width = 128; SelectAllButton.Height = 38;
-            SelectAllButton.VerticalAlignment = VerticalAlignment.Center;
-            SelectAllButton.Margin = new Thickness(0, 0, 16, 0); footer.Children.Add(SelectAllButton);
+            SelectAllBox = new CheckBox { Content = "全选", Style = LightTheme.SelectionStyle, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 16, 0) };
+            System.Windows.Automation.AutomationProperties.SetName(SelectAllBox, "选择全部图片");
+            SelectAllBox.Click += delegate { if (!selectionSync) SelectAll(); }; footer.Children.Add(SelectAllBox);
             status.TextTrimming = TextTrimming.CharacterEllipsis; status.Margin = new Thickness(0, 0, 12, 0);
             Grid.SetColumn(status, 1); footer.Children.Add(status);
             DeleteButton = LightTheme.Button("删除所选", DeleteSelected, "danger");
-            DeleteButton.Width = 128; DeleteButton.Height = 38;
+            DeleteButton.MinWidth = 112; DeleteButton.Height = 36;
             DeleteButton.HorizontalAlignment = HorizontalAlignment.Right; DeleteButton.VerticalAlignment = VerticalAlignment.Center;
             DeleteButton.Margin = new Thickness(0, 0, 12, 0);
             DeleteButton.ToolTip = "收集副本移到回收站，外部原图只移除记录";
             AutomationProperties.SetName(DeleteButton, "删除所选图片"); Grid.SetColumn(DeleteButton, 2); footer.Children.Add(DeleteButton);
-            HangButton = LightTheme.Button("挂上绳子", Mount, "primary"); HangButton.Width = 128; HangButton.Height = 38;
+            HangButton = LightTheme.Button("挂上绳子", Mount, "primary"); HangButton.MinWidth = 112; HangButton.Height = 36;
             HangButton.HorizontalAlignment = HorizontalAlignment.Right; HangButton.VerticalAlignment = VerticalAlignment.Center;
             AutomationProperties.SetName(HangButton, "挂上绳子"); Grid.SetColumn(HangButton, 3); footer.Children.Add(HangButton);
-            foreach (var button in new[] { PendingTab, AllTab, SelectAllButton, DeleteButton, HangButton })
+            foreach (var button in new[] { PendingTab, AllTab, DeleteButton, HangButton })
             {
                 button.FontWeight = FontWeights.Normal;
             }
-            foreach (var button in new[] { SelectAllButton, DeleteButton, HangButton }) button.FontSize = 14;
+            foreach (var button in new[] { DeleteButton, HangButton }) button.FontSize = 14;
             var bottom = new Border { BorderBrush = LightTheme.Brush("#E8EBEF"), BorderThickness = new Thickness(0, 1, 0, 0), Child = footer };
             Grid.SetRow(bottom, 3); body.Children.Add(bottom);
             // 右下角缩放手柄：无边框窗口没有系统边框可拖，想放大看图就只能靠这个角。
@@ -408,8 +374,40 @@ namespace ScreenLine
                 WindowsNative.SetWindowPos(handle, new IntPtr(-1),
                     screen.WorkingArea.Left + (screen.WorkingArea.Width - width) / 2, top, width, height, 0x10);
             };
+            bool fittingDisplay = false;
+            Action fitDisplay = delegate
+            {
+                if (closed || fittingDisplay) return;
+                var handle = new WindowInteropHelper(this).Handle;
+                WindowsNative.Rectangle bounds;
+                if (handle == IntPtr.Zero || !WindowsNative.GetWindowRect(handle, out bounds)) return;
+                fittingDisplay = true;
+                try
+                {
+                    screen = System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point((bounds.Left + bounds.Right) / 2, (bounds.Top + bounds.Bottom) / 2));
+                    dpi = WindowsNative.MonitorScale(screen);
+                    maxWidth = Math.Max(1, screen.WorkingArea.Width / dpi - 16); maxHeight = Math.Max(1, screen.WorkingArea.Height / dpi - 16);
+                    MinWidth = Math.Min(720, maxWidth); MinHeight = Math.Min(420, maxHeight);
+                    Width = Math.Min(Width, maxWidth); Height = Math.Min(Height, maxHeight);
+                    int width = (int)Math.Round(Width * dpi), height = (int)Math.Round(Height * dpi);
+                    int x = Math.Max(screen.WorkingArea.Left, Math.Min(screen.WorkingArea.Right - width, bounds.Left));
+                    int y = Math.Max(screen.WorkingArea.Top, Math.Min(screen.WorkingArea.Bottom - height, bounds.Top));
+                    WindowsNative.SetWindowPos(handle, IntPtr.Zero, x, y, width, height, 0x14);
+                }
+                finally { fittingDisplay = false; }
+            };
+            DpiChanged += delegate { Dispatcher.BeginInvoke(fitDisplay, System.Windows.Threading.DispatcherPriority.Loaded); };
+            LocationChanged += delegate
+            {
+                if (fittingDisplay) return;
+                var handle = new WindowInteropHelper(this).Handle; WindowsNative.Rectangle bounds;
+                if (handle == IntPtr.Zero || !WindowsNative.GetWindowRect(handle, out bounds)) return;
+                var current = System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point((bounds.Left + bounds.Right) / 2, (bounds.Top + bounds.Bottom) / 2));
+                if (current.DeviceName != screen.DeviceName) fitDisplay();
+            };
             PreviewKeyDown += delegate(object sender, KeyEventArgs e)
             {
+                if (Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase && e.Key != Key.Escape) return;
                 // 兼容 Windows 习惯：Ctrl+A 全选/取消全选。
                 if (e.Key == Key.A && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
                 {
@@ -466,6 +464,7 @@ namespace ScreenLine
             };
             gallery.Changed += GalleryChanged;
             Closed += delegate { closed = true; gallery.Changed -= GalleryChanged; previewVersion++; preview.Source = null; foreach (var image in pictures.Values) image.Source = null; pictures.Clear(); visiblePictures.Clear(); };
+            pendingOnly = gallery.Collected.Any(item => !gallery.Contains(item.Path));
             Refresh();
         }
 
@@ -495,18 +494,24 @@ namespace ScreenLine
             return true;
         }
 
-        void AutoChanged(object sender, RoutedEventArgs e)
+        void GalleryChanged()
         {
-            if (!refreshing && gallery.Store.State.AutoHang != (AutoHang.IsChecked == true)) setAutoHang(AutoHang.IsChecked == true);
+            if (mounting || closed || refreshQueued) return;
+            refreshQueued = true;
+            Dispatcher.BeginInvoke(new Action(delegate { refreshQueued = false; if (!closed) Refresh(); }), System.Windows.Threading.DispatcherPriority.Background);
         }
 
-        void GalleryChanged() { if (!mounting) Refresh(); }
+        static Border CountPill(string title, object count, string background, string foreground)
+        {
+            return new Border { Background = LightTheme.Brush(background), CornerRadius = new CornerRadius(11), Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(6, 0, 0, 0),
+                Child = new TextBlock { Text = title + " " + count, FontSize = 12, Foreground = LightTheme.Brush(foreground) } };
+        }
+
+        internal void RefreshCapacity() { if (!closed) Refresh(); }
 
         void Refresh()
         {
-            refreshing = true;
-            AutoHang.IsChecked = gallery.Store.State.AutoHang;
-            refreshing = false;
+            AutoPurgeSwitch.IsChecked = gallery.Store.State.AutoPurge;
             selected.RemoveWhere(path => (pendingOnly && gallery.Contains(path)) || !gallery.Collected.Any(i => FileRules.SameFile(i.Path, path)));
             int pending = gallery.Collected.Count(i => !gallery.Contains(i.Path));
             // 数量口径与绳上一致：「已挂上」只统计肉眼可见的夹子；贴到桌面的单独归入「贴图」。
@@ -516,26 +521,42 @@ namespace ScreenLine
             int room = ropeRoom == null ? -1 : Math.Max(0, ropeRoom());
             // 摘要胶囊：一项一枚、颜色分域（绳上蓝、贴图灰、待挂琥珀、状态红/绿），间距拉开方便区分。
             summary.Children.Clear();
-            summary.Children.Add(Chip("绳上", onRope + (capacity > 0 ? "/" + capacity : ""), "#E8F1FB", "#5B7A9E", "#2463AE"));
-            summary.Children.Add(Chip("贴图", pinnedCount.ToString(), "#F1F4F8", "#5B6B7C", "#343D49"));
-            summary.Children.Add(Chip("待挂", pending.ToString(), "#FCF3E2", "#8A6D35", "#9A6B1F"));
-            if (room == 0) summary.Children.Add(Chip("绳子已满", null, "#FBE3E0", "#A93E3A", "#A93E3A"));
-            else if (room > 0) summary.Children.Add(Chip("还能挂", room + " 张", "#E4F2E8", "#5B8A67", "#2E7D46"));
+            summary.Children.Add(CountPill("绳上", capacity > 0 ? onRope + "/" + capacity : onRope.ToString(), "#E4EEFB", "#1E549B"));
+            summary.Children.Add(CountPill("贴图", pinnedCount, "#EDF0F4", "#5B6B7C"));
+            summary.Children.Add(CountPill("待挂", pending, "#FCF3E2", "#8A6D35"));
             PendingTab.Content = "待挂 " + pending; AllTab.Content = "全部 " + gallery.Collected.Count;
-            PendingTab.Tag = pendingOnly ? "primary" : "quiet"; AllTab.Tag = pendingOnly ? "quiet" : "primary";
+            PendingTab.Tag = pendingOnly ? "primary" : "quiet"; AllTab.Tag = !pendingOnly ? "primary" : "quiet";
             double offset = scroll.VerticalOffset;
-            thumbnails.Children.Clear(); choices.Clear(); updaters.Clear(); pictures.Clear(); visiblePictures.Clear();
-            var items = gallery.Collected.Where(i => !pendingOnly || !gallery.Contains(i.Path)).OrderByDescending(i => i.Written).ToArray();
+            var items = gallery.Collected.Where(i => !pendingOnly || !gallery.Contains(i.Path)).OrderByDescending(i => i.Written).ThenBy(i => i.Path, StringComparer.OrdinalIgnoreCase).ToArray();
+            var byPath = items.ToDictionary(i => i.Path, StringComparer.OrdinalIgnoreCase);
+            foreach (string path in choices.Keys.Where(p => !byPath.ContainsKey(p) || !ReferenceEquals(choices[p].DataContext, byPath[p])).ToArray())
+            {
+                thumbnails.Children.Remove(choices[path]); choices.Remove(path); updaters.Remove(path);
+                foreach (var old in pictures.Keys.Where(i => FileRules.SameFile(i.Path, path)).ToArray()) { visiblePictures.Remove(pictures[old]); pictures.Remove(old); displayedImages.Remove(old); }
+            }
             ordered = items.Select(i => i.Path).ToList();
             if (lastClicked != null && !ordered.Contains(lastClicked)) lastClicked = null;
-            foreach (var item in items) AddChoice(item);
+            for (int index = 0; index < items.Length; index++)
+            {
+                var item = items[index];
+                if (!choices.ContainsKey(item.Path)) AddChoice(item);
+                var choice = choices[item.Path];
+                if (thumbnails.Children.IndexOf(choice) != index) { thumbnails.Children.Remove(choice); thumbnails.Children.Insert(index, choice); }
+                ImageContent shown;
+                if (displayedImages.TryGetValue(item, out shown) && shown != item.Image) pictures[item].Source = null;
+                displayedImages[item] = item.Image;
+                updaters[item.Path]();
+            }
+            selected.RemoveWhere(p => !byPath.ContainsKey(p));
             Dispatcher.BeginInvoke(new Action(UpdateThumbnails), System.Windows.Threading.DispatcherPriority.Loaded);
             empty.Text = gallery.Collected.Count == 0 ? "图片篮子还是空的\n截图收集后会出现在这里" : "图片都挂好了\n切换到「全部」查看收集的图片";
             empty.Visibility = items.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
             scroll.Visibility = items.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+            previewPane.Visibility = items.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+            browserContent.ColumnDefinitions[1].Width = items.Length == 0 ? new GridLength(0) : new GridLength(2, GridUnitType.Star);
             scroll.ScrollToVerticalOffset(offset);
             UpdateSelection();
-            if (previewItem != null && !gallery.Collected.Contains(previewItem)) previewItem = null;
+            if (previewItem != null && !items.Contains(previewItem)) previewItem = null;
             if (previewItem == null) ShowPreview(items.FirstOrDefault());
             else if (previewContent != previewItem.Image) ShowPreview(previewItem);
         }
@@ -597,11 +618,17 @@ namespace ScreenLine
             image.Children.Add(mark);
             var frame = new Border { Child = image, Background = LightTheme.Brush("#F1F4F8"), BorderThickness = new Thickness(2), CornerRadius = new CornerRadius(8) };
             stack.Children.Add(frame);
+            var filename = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 12, Foreground = LightTheme.Brush("#283343"), Margin = new Thickness(3, 6, 0, 0) }; stack.Children.Add(filename);
             stack.Children.Add(new TextBlock { Text = TimeLabel(item.Written), FontSize = 11, Foreground = LightTheme.Brush("#65717F"), Margin = new Thickness(3, 7, 0, 0) });
             var button = new Button { Style = LightTheme.ButtonStyle, Tag = "quiet", VerticalAlignment = VerticalAlignment.Top };
+            string previousVisualState = null;
             Action updateChoice = delegate
             {
+                mounted = gallery.Contains(item.Path); pinned = mounted && isPinned != null && isPinned(item.Path);
                 bool chosen = selected.Contains(item.Path);
+                string key = chosen + "|" + mounted + "|" + pinned + "|" + button.IsKeyboardFocused;
+                if (key == previousVisualState) return; previousVisualState = key;
+                filename.Text = Path.GetFileName(item.Path);
                 mark.Visibility = chosen || mounted ? Visibility.Visible : Visibility.Collapsed;
                 frame.BorderBrush = LightTheme.Brush(chosen ? "#2463AE" : button.IsKeyboardFocused ? "#6E97CB" : "#E5EAF1");
                 mark.Background = LightTheme.Brush(chosen ? "#2463AE" : "#FFFFFF"); mark.BorderBrush = LightTheme.Brush(chosen ? "#2463AE" : "#9CAABD");
@@ -641,6 +668,7 @@ namespace ScreenLine
                 foreach (var update in updaters.Values) update();
                 UpdateSelection();
             };
+            button.DataContext = item;
             button.Content = stack; button.Height = Double.NaN; button.Padding = new Thickness(0); button.Margin = new Thickness(6, 0, 6, 16);
             button.Template = choiceTemplate;
             button.HorizontalContentAlignment = HorizontalAlignment.Stretch;
@@ -654,22 +682,24 @@ namespace ScreenLine
         void UpdateThumbnails()
         {
             if (closed) return;
-            // 缩略图高度固定，不随可视区或图片数量撑缩：两张和三排时间距、分布保持一致。
-            var viewport = new Rect(0, 0, scroll.ActualWidth, scroll.ActualHeight);
-            visiblePictures.Clear();
-            foreach (var entry in pictures)
+            var previous = visiblePictures.ToArray(); visiblePictures.Clear();
+            int rows = (int)Math.Ceiling(ordered.Count / 3.0);
+            double rowHeight = rows > 0 ? thumbnails.ActualHeight / rows : 0;
+            int first = rowHeight > 0 ? Math.Max(0, (int)Math.Floor(scroll.VerticalOffset / rowHeight) - 1) * 3 : 0;
+            int end = rowHeight > 0 ? Math.Min(ordered.Count, ((int)Math.Ceiling((scroll.VerticalOffset + scroll.ViewportHeight) / rowHeight) + 1) * 3) : Math.Min(ordered.Count, 18);
+            for (int index = first; index < end; index++)
             {
-                var picture = entry.Value;
-                var frame = (FrameworkElement)picture.Parent;
-                if (frame.ActualWidth == 0 || !frame.IsDescendantOf(scroll)) continue;
-                var bounds = frame.TransformToAncestor(scroll).TransformBounds(new Rect(frame.RenderSize));
-                if (!bounds.IntersectsWith(viewport)) { picture.Source = null; continue; }
+                var item = choices[ordered[index]].DataContext as CaptureItem;
+                if (item == null) continue;
+                Image picture;
+                if (!pictures.TryGetValue(item, out picture)) continue;
                 visiblePictures.Add(picture);
                 if (picture.Source != null) continue;
-                var cached = entry.Key.Image.CachedThumbnail;
+                var cached = item.Image.CachedThumbnail;
                 if (cached != null) { picture.Source = cached; continue; }
-                if (loadingPictures.Add(picture)) LoadThumbnail(entry.Key, picture);
+                if (loadingPictures.Add(picture)) LoadThumbnail(item, picture);
             }
+            foreach (var image in previous) if (!visiblePictures.Contains(image)) image.Source = null;
         }
 
         bool ThumbnailCurrent(CaptureItem item, Image picture, ImageContent content)
@@ -764,26 +794,23 @@ namespace ScreenLine
 
         void UpdateSelection()
         {
-            SelectAllButton.IsEnabled = choices.Count > 0;
+            selectionSync = true;
+            SelectAllBox.IsEnabled = choices.Count > 0;
             bool all = choices.Count > 0 && choices.Keys.All(selected.Contains);
-            SelectAllButton.Content = all ? "✓ 取消全选" : "全选";
-            // 两态视觉：未全选是浅色描边款，全选后转填充款，一眼可分。
-            SelectAllButton.Tag = all ? "select-on" : "select";
+            SelectAllBox.IsChecked = all;
+            selectionSync = false;
             int pending = selected.Count(path => !gallery.Contains(path));
-            // 临界提示：选中的待挂数超过绳子剩余空间时，提前告知只能挂一部分。
             int room = ropeRoom == null ? int.MaxValue : Math.Max(0, ropeRoom());
-            status.Text = (all ? "已全选 " + choices.Count + " 张" : "已选 " + selected.Count + " 张")
-                + (pending < selected.Count ? " · " + pending + " 张待挂" : "")
-                + (pending > room ? " · 绳子还能挂 " + room + " 张" : "");
-            HangButton.ToolTip = room < int.MaxValue ? "绳子最多挂 24 张，超出部分会留在篮子" : null;
-            HangButton.IsEnabled = pending > 0;
+            status.Text = "已选 " + selected.Count + " 张" + (room == int.MaxValue ? "" : "，绳子上还能挂 " + room + " 张");
+            HangButton.ToolTip = room == int.MaxValue ? null : "还能挂 " + room + " 张";
+            HangButton.IsEnabled = pending > 0 && room > 0;
             DeleteButton.IsEnabled = selected.Count > 0;
         }
 
         void Mount()
         {
             var items = gallery.Collected.Where(i => selected.Contains(i.Path) && !gallery.Contains(i.Path)).ToArray();
-            // 绳子容量有限（最多 24 张）：一次只挂到满，剩下的留在篮子并保持选中，避免刚挂上又被挤下来。
+            // 绳子容量有限：一次只挂到满，剩下的留在篮子并保持选中，避免刚挂上又被挤下来。
             int room = ropeRoom == null ? items.Length : Math.Max(0, ropeRoom());
             var mount = items.Take(room).ToArray();
             mounting = true;

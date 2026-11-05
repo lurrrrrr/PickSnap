@@ -3,7 +3,8 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $stagePath = [IO.Path]::GetFullPath((Join-Path $projectRoot 'build\package'))
 if (-not $stagePath.StartsWith($projectRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw '打包目录超出项目范围' }
-if (Test-Path -LiteralPath $stagePath) { Remove-Item -LiteralPath $stagePath -Recurse -Force }
+. (Join-Path $PSScriptRoot 'maintenance-common.ps1')
+if (Test-Path -LiteralPath $stagePath) { Assert-PickSnapTree $stagePath $projectRoot; Remove-Item -LiteralPath $stagePath -Recurse -Force }
 $appPath = Join-Path $stagePath 'app'
 New-Item -ItemType Directory -Path $appPath -Force | Out-Null
 $files = [ordered]@{
@@ -14,6 +15,7 @@ $files = [ordered]@{
     'LICENSE' = 'LICENSE'
     'NOTICE' = 'NOTICE'
     'uninstall.ps1' = 'scripts\uninstall.ps1'
+    'maintenance-common.ps1' = 'scripts\maintenance-common.ps1'
     'update.ps1' = 'scripts\update.ps1'
     'editor\index.html' = 'src\editor\index.html'
     'editor\editor.js' = 'src\editor\editor.js'
@@ -38,6 +40,4 @@ $version = [Diagnostics.FileVersionInfo]::GetVersionInfo([IO.Path]::GetFullPath(
 if ($version -notmatch '^\d+\.\d+\.\d+$') { throw '程序版本号无效' }
 $archivePath = Join-Path $releasePath ('PickSnap-' + $version + '-windows-x64.zip')
 Compress-Archive -LiteralPath $appPath,(Join-Path $stagePath 'Install.cmd'),(Join-Path $stagePath 'install.ps1') -DestinationPath $archivePath -Force
-$checksum = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + [IO.Path]::GetFileName($archivePath)
-Set-Content -LiteralPath ($archivePath + '.sha256') -Value $checksum -Encoding ASCII
 Write-Output ('发布包：' + $archivePath)

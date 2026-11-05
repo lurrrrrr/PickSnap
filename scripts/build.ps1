@@ -1,9 +1,9 @@
-﻿param([switch]$Package)
+﻿param([switch]$Package, [string]$OutputDirectory = 'build')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $frameworkPath = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
 $compilerPath = Join-Path $frameworkPath 'csc.exe'
-$buildPath = Join-Path $projectRoot 'build'
+$buildPath = if ([IO.Path]::IsPathRooted($OutputDirectory)) { [IO.Path]::GetFullPath($OutputDirectory) } else { [IO.Path]::GetFullPath((Join-Path $projectRoot $OutputDirectory)) }
 New-Item -ItemType Directory -Path $buildPath -Force | Out-Null
 $references = @(
     "/r:$frameworkPath\WPF\PresentationCore.dll",
@@ -21,12 +21,12 @@ $sources = (Get-ChildItem -LiteralPath (Join-Path $projectRoot 'src') -Filter '*
 $manifestPath = Join-Path $projectRoot 'src\app.manifest'
 $iconPath = Join-Path $projectRoot 'src\assets\PickSnap.ico'
 & (Join-Path $PSScriptRoot 'prepare-assets.ps1')
-$basketResources = Get-ChildItem -LiteralPath (Join-Path $buildPath 'runtime-assets') -Filter 'basket-*.png' | ForEach-Object { '/resource:' + $_.FullName + ',PickSnap.Basket.' + $_.BaseName.Substring(7) }
-$basketResources += @(Get-ChildItem -LiteralPath (Join-Path $buildPath 'runtime-assets') -Filter 'envelope-*.png' | ForEach-Object { '/resource:' + $_.FullName + ',PickSnap.Envelope.' + $_.BaseName.Substring(9) })
+$basketResources = Get-ChildItem -LiteralPath (Join-Path $projectRoot 'build\runtime-assets') -Filter 'basket-*.png' | ForEach-Object { '/resource:' + $_.FullName + ',PickSnap.Basket.' + $_.BaseName.Substring(7) }
+$basketResources += @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'build\runtime-assets') -Filter 'envelope-*.png' | ForEach-Object { '/resource:' + $_.FullName + ',PickSnap.Envelope.' + $_.BaseName.Substring(9) })
 & $compilerPath /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 "/out:$buildPath\PickSnap.exe" "/win32manifest:$manifestPath" "/win32icon:$iconPath" "/resource:$iconPath,PickSnap.Icon" "/resource:$(Join-Path $projectRoot 'scripts\update.ps1'),PickSnap.UpdateScript" $basketResources $references $sources
 if ($LASTEXITCODE -ne 0) { throw '应用构建失败' }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'src\App.config') -Destination (Join-Path $buildPath 'PickSnap.exe.config')
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'update.ps1') -Destination $buildPath
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'update.ps1'),(Join-Path $PSScriptRoot 'uninstall.ps1'),(Join-Path $PSScriptRoot 'maintenance-common.ps1') -Destination $buildPath
 Copy-Item -LiteralPath (Join-Path $projectRoot 'LICENSE'),(Join-Path $projectRoot 'NOTICE') -Destination $buildPath
 $editorPath = Join-Path $buildPath 'editor'
 $noticePath = Join-Path $buildPath 'third-party-notices'
@@ -37,4 +37,4 @@ Copy-Item -LiteralPath (Join-Path $projectRoot 'vendor\Filerobot\LICENSE'),(Join
 Copy-Item -LiteralPath (Join-Path $projectRoot 'vendor\WebView2\LICENSE.txt'),(Join-Path $projectRoot 'vendor\WebView2\NOTICE.txt') -Destination (Join-Path $noticePath 'WebView2')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'vendor\WebView2\Microsoft.Web.WebView2.Core.dll'),(Join-Path $projectRoot 'vendor\WebView2\Microsoft.Web.WebView2.Wpf.dll'),(Join-Path $projectRoot 'vendor\WebView2\WebView2Loader.dll') -Destination $buildPath
 Write-Output ('构建完成：' + (Join-Path $buildPath 'PickSnap.exe'))
-if ($Package) { & (Join-Path $PSScriptRoot 'package.ps1') }
+if ($Package) { & (Join-Path $PSScriptRoot 'package.ps1') -ExecutablePath (Join-Path $buildPath 'PickSnap.exe') }

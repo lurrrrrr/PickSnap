@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Specialized;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -16,12 +16,12 @@ using Microsoft.VisualBasic.FileIO;
 using Microsoft.Win32;
 using Forms = System.Windows.Forms;
 
-[assembly: AssemblyTitle("PickSnap · 拾帧")]
+[assembly: AssemblyTitle("PickSnap")]
 [assembly: AssemblyProduct("PickSnap")]
-[assembly: AssemblyDescription("拾帧：把截图挂在屏幕上沿，随手复制、拖拽和保存。")]
-[assembly: AssemblyVersion("1.1.0.0")]
-[assembly: AssemblyFileVersion("1.1.0.0")]
-[assembly: AssemblyInformationalVersion("1.1.0")]
+[assembly: AssemblyDescription("PickSnap：把截图挂在屏幕上沿，随手复制、拖拽和保存。")]
+[assembly: AssemblyVersion("2.0.0.0")]
+[assembly: AssemblyFileVersion("2.0.0.0")]
+[assembly: AssemblyInformationalVersion("2.0.0")]
 
 namespace ScreenLine
 {
@@ -34,34 +34,34 @@ namespace ScreenLine
         readonly WindowsEvents events;
         readonly Forms.NotifyIcon tray = new Forms.NotifyIcon();
         LightNotice notice;
-        readonly CheckBox collect;
-        readonly CheckBox collectText;
-        readonly CheckBox autoHang;
         internal readonly TrayPanel TrayMenu;
         internal AppearanceWindow Appearance { get; private set; }
         internal BasketWindow Basket { get; private set; }
         internal TextWindow TextWindow { get; private set; }
         internal CaptureWindow Capture { get; private set; }
         internal ShortcutWindow ShortcutSettings { get; private set; }
-        readonly MenuItem shortcutItem;
         internal readonly List<ImageEditorWindow> Editors = new List<ImageEditorWindow>();
-        readonly AppUpdates updates = new AppUpdates();
+        readonly AppUpdates updates;
         readonly CancellationTokenSource updateLifetime = new CancellationTokenSource();
         const int BasketLimit = 100;
         int lastCollectedCount;
+        DateTime lastBasketNotice = DateTime.MinValue;
         readonly DispatcherTimer updateTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
-        readonly MenuItem updateMenu;
-        // 每 6 小时复查一次旧图：软件常驻数天也不会错过清理时机。（开关在图片篮子面板底部）
+        // 每 6 小时复查一次旧图：软件常驻数天也不会错过清理时机。（开关在设置 → 收集与清理）
         readonly DispatcherTimer purgeTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(6) };
         readonly bool automaticUpdates;
+        internal SettingsWindow Settings { get; private set; }
         UpdateRelease availableUpdate;
         UpdateWindow updateWindow;
-        bool checkingUpdates, disposed;
+        UninstallWindow uninstallWindow;
+        bool disposed, started;
+        Task<UpdateCheckResult> updateCheckTask;
+        internal UpdateCheckResult LastUpdateCheck { get; private set; }
         uint textClipboardSequence;
         int textClipboardVersion;
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
-        // 在桌面创建「PickSnap」快捷方式：首次启动自动执行一次，托盘「更多操作」里也可随时重建。
+        // 在桌面创建「PickSnap」快捷方式：首次启动自动执行一次，设置 → 更新与卸载中也可随时重建。
         // 便携 zip 没有“安装”环节，快捷方式只能由应用自己补——经 WScript.Shell COM（反射调用，无需额外引用）。
         // 不写 Description：悬停时只显示名字，不带宣传语。
         public static bool CreateDesktopShortcut()
@@ -80,132 +80,57 @@ namespace ScreenLine
             return File.Exists(link);
         }
 
-        public DesktopController(StateStore store, string screenshots, bool automaticUpdates = true)
+        public DesktopController(StateStore store, string screenshots, bool automaticUpdates = true, AppUpdates updateClient = null)
         {
-            this.automaticUpdates = automaticUpdates;
+            this.automaticUpdates = automaticUpdates; updates = updateClient ?? new AppUpdates();
+            LastUpdateCheck = new UpdateCheckResult { Phase = UpdateCheckPhase.Idle, Message = "尚未检查更新" };
             Gallery = new Gallery(store);
             Texts = new TextCollection(store);
             Captures = new CapturePipeline(Gallery, Application.Current.Dispatcher, screenshots);
             Shelf = new ShelfWindow(Gallery, Act, EnableClipboard);
             Shelf.BasketRequested += ShowBasket;
+            Shelf.RopeStatusChanged += delegate { if (Basket != null) Basket.RefreshCapacity(); };
             Shelf.TextRequested += ShowTexts;
             // 绳子换屏重排时会把自己置顶，篮子跟着提回来，避免被压在下面点不动。
             Shelf.RopeMoved += delegate { if (Basket != null) Basket.BringToFront(); };
             Texts.Changed += Shelf.UpdateTexts;
-            events = new WindowsEvents();
-            events.RegisterCapture(store.State.CaptureModifiers, store.State.CaptureKey);
+            events = new WindowsEvents(false);
+            events.RegisterToggle(store.State.ToggleModifiers, store.State.ToggleKey); events.RegisterCapture(store.State.CaptureModifiers, store.State.CaptureKey);
             events.CaptureRequested += ShowCapture;
-            events.ToggleRequested += Shelf.Toggle;
+            events.ToggleRequested += ToggleShelf;
+            events.SettingsRequested += delegate { ShowSettings(); };
+            events.UninstallRequested += delegate { ShowSettings("更新与卸载"); Uninstall(); };
             events.ExitRequested += Exit;
-            events.ClipboardChanged += Captures.ClipboardChanged;
             textClipboardSequence = WindowsNative.GetClipboardSequenceNumber();
-            events.ClipboardChanged += CollectClipboardText;
             Captures.Arrived += Shelf.ShowNewCapture;
             Captures.Failed += Notice;
             using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("PickSnap.Icon"))
                 tray.Icon = new System.Drawing.Icon(stream, Forms.SystemInformation.SmallIconSize);
-            tray.Text = "PickSnap · 拾帧";
+            tray.Text = "PickSnap";
             TrayMenu = new TrayPanel();
-            SyncScreens();
-            TrayMenu.Opened += delegate { SyncScreens(); };
-            TrayMenu.ScreenMenu.Opened += delegate { SyncScreens(); };
-            TrayMenu.OnAction(TrayMenu.VisibilityButton, delegate { Shelf.Toggle(); });
-            if (events.ShortcutAvailable) TrayMenu.SetShortcutTip("Ctrl+Alt+T");
-            else Notice("Ctrl+Alt+T 已被占用，可点击托盘图标打开。");
-            TrayMenu.OnAction(TrayMenu.BasketButton, ShowBasket);
-            TrayMenu.OnAction(TrayMenu.TextButton, ShowTexts);
+            TrayMenu.OnAction(TrayMenu.VisibilityButton, ToggleShelf);
+            UpdateShortcutLabels();
+            if (!events.ShortcutAvailable || !events.CaptureShortcutAvailable) Notice("部分快捷键被占用，请在设置 → 快捷键中更改。");
+            TrayMenu.OnAction(TrayMenu.BasketButton, ShowBasket); TrayMenu.OnAction(TrayMenu.TextButton, ShowTexts);
             TrayMenu.OnAction(TrayMenu.CaptureButton, ShowCapture);
-            autoHang = TrayMenu.AutoHang;
-            TrayMenu.OnToggle(autoHang, Captures.AutoHang, delegate(bool value) { if (Captures.AutoHang != value) Captures.AutoHang = value; });
-            Gallery.Changed += SyncAutoHang;
-            Gallery.Changed += CheckCacheLimit;
-            lastCollectedCount = Gallery.Collected.Count;
-            collect = TrayMenu.Pictures;
-            TrayMenu.OnToggle(collect, Captures.CollectClipboard, delegate(bool value) { Captures.CollectClipboard = value; Shelf.Update(); });
-            collectText = TrayMenu.Text;
-            TrayMenu.OnToggle(collectText, Texts.CollectClipboard, delegate(bool value)
-            {
-                textClipboardVersion++;
-                textClipboardSequence = WindowsNative.GetClipboardSequenceNumber();
-                Texts.CollectClipboard = value;
-                // 信封图标跟着这个开关显示或收起，需要立刻让绳子重排右端空间。
-                Shelf.UpdateTexts();
-            });
-            TrayMenu.OnAction(TrayMenu.AppearanceButton, ShowAppearance);
-            var more = TrayMenu.MoreMenu;            MenuItem previewToggle = null;
-            previewToggle = more.AddAction("悬停放大预览", "zoom", delegate
-            {
-                bool previous = store.State.HoverPreview;
-                store.State.HoverPreview = previewToggle.IsChecked;
-                try { store.Save(); Shelf.Preview.SetEnabled(store.State.HoverPreview); }
-                catch (Exception error) { store.State.HoverPreview = previous; previewToggle.IsChecked = previous; store.Log(error); Notice("预览设置保存失败"); }
-            });
-            previewToggle.IsCheckable = true;
-            previewToggle.IsChecked = store.State.HoverPreview;
-            previewToggle.ToolTip = "开启后，鼠标停在绳子上的图片会浮出一块放大预览";
-            // 顶部悬停展开：关闭后光标碰到屏幕顶边不再自动把绳子滑下来，避免误触；
-            // 截图到达、编辑返回这些主动展示不受影响。
-            MenuItem revealToggle = null;
-            revealToggle = more.AddAction("鼠标移至顶部时展开", "reveal", delegate
-            {
-                bool previous = store.State.NoHoverReveal;
-                store.State.NoHoverReveal = !revealToggle.IsChecked;
-                try { store.Save(); }
-                catch (Exception error) { store.State.NoHoverReveal = previous; revealToggle.IsChecked = !previous; store.Log(error); Notice("设置保存失败"); }
-            });
-            revealToggle.IsCheckable = true;
-            revealToggle.IsChecked = !store.State.NoHoverReveal;
-            revealToggle.ToolTip = "关闭后鼠标移到屏幕顶部不再自动展开，仍可用 Ctrl+Alt+T 或托盘图标显示挂绳";
-            shortcutItem = more.AddAction("截图快捷键", "shortcut", delegate
-            {
-                if (ShortcutSettings != null) { ShortcutSettings.Activate(); return; }
-                ShortcutSettings = new ShortcutWindow(store.State.CaptureModifiers, store.State.CaptureKey, SetCaptureShortcut);
-                ShortcutSettings.Closed += delegate { ShortcutSettings = null; }; ShortcutSettings.Show();
-            });
-            UpdateCaptureLabel();
-            more.Separator();
-            more.AddAction("添加图片", "add", async delegate
+            Gallery.Changed += CheckCacheLimit; lastCollectedCount = Gallery.Collected.Count;
+            TrayMenu.OnAction(TrayMenu.AddButton, async delegate
             {
                 var picker = new OpenFileDialog { Title = "添加图片", Filter = "图片|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff", Multiselect = true };
                 if (picker.ShowDialog() != true) return;
-                foreach (string file in picker.FileNames)
-                    if (!await Captures.Import(file, null, true)) Notice("无法读取图片：" + Path.GetFileName(file));
+                foreach (string file in picker.FileNames) if (!await Captures.Import(file, null, true)) Notice("无法读取图片：" + Path.GetFileName(file));
             });
-            more.AddAction("打开收集文件夹", "folder", delegate
-            {
-                try { WindowsShell.OpenInbox(store); }
-                catch (Exception error) { store.Log(error); Notice("无法打开收集文件夹：" + error.Message); }
-            });
-            more.AddAction("全部收进篮子", "clear", delegate { Gallery.Clear(); });
-            // 旧图清理的开关放在图片篮子面板底部（与篮子相关的操作收在一处），这里只保留定时器。
+            TrayMenu.OnCollectionToggle(TrayMenu.PicturesSwitch, () => Captures.CollectClipboard, SetClipboardImages);
+            TrayMenu.OnCollectionToggle(TrayMenu.TextSwitch, () => Texts.CollectClipboard, SetClipboardText);
+            TrayMenu.Opened += delegate { TrayMenu.SetVisibility(Shelf.Revealed); TrayMenu.SyncCollection(Captures.CollectClipboard, Texts.CollectClipboard); UpdateShortcutLabels(); };
+            TrayMenu.OnAction(TrayMenu.SettingsButton, delegate { ShowSettings(); });
             purgeTimer.Tick += delegate { RunAutoPurge(false); };
             if (store.State.AutoPurge) purgeTimer.Start();
-            more.Separator();
-            MenuItem startup = null;
-            startup = more.AddAction("开机启动", "startup", delegate
-            {
-                using (var key = Registry.CurrentUser.CreateSubKey(RunKey))
-                {
-                    if (startup.IsChecked) key.SetValue("PickSnap", Quote(Assembly.GetEntryAssembly().Location));
-                    else key.DeleteValue("PickSnap", false);
-                }
-            });
-            startup.IsCheckable = true;
-            using (var key = Registry.CurrentUser.OpenSubKey(RunKey)) startup.IsChecked = key != null && key.GetValue("PickSnap") != null;
-            more.AddAction("在桌面创建快捷方式", "desktopplus", delegate
-            {
-                try { Notice(DesktopController.CreateDesktopShortcut() ? "已在桌面创建「PickSnap」快捷方式" : "快捷方式创建失败，请检查桌面目录权限"); }
-                catch (Exception error) { store.Log(error); Notice("快捷方式创建失败：" + error.Message); }
-            });
-            updateMenu = more.AddAction("检查更新", "refresh", async delegate { await CheckForUpdates(true); });
-            more.Separator();
-            // 卸载入口也放进托盘：用户不必先去「设置 → 应用」里翻，脚本自己会确认并停掉程序。
-            more.AddAction("卸载软件", "uninstall", Uninstall);
             updateTimer.Tick += async delegate { updateTimer.Interval = TimeSpan.FromHours(12); await CheckForUpdates(false); };
             tray.BalloonTipClicked += delegate { ShowUpdate(); };
             TrayMenu.OnAction(TrayMenu.ExitButton, Exit);
             tray.MouseUp += delegate(object sender, Forms.MouseEventArgs args) { if (args.Button == Forms.MouseButtons.Right) ShowTrayMenu(); };
-            tray.MouseClick += delegate(object sender, Forms.MouseEventArgs args) { if (args.Button == Forms.MouseButtons.Left) Shelf.Toggle(); };
+            tray.MouseClick += delegate(object sender, Forms.MouseEventArgs args) { if (args.Button == Forms.MouseButtons.Left) ToggleShelf(); };
             tray.Visible = true;
         }
 
@@ -215,45 +140,130 @@ namespace ScreenLine
             Application.Current.Shutdown();
         }
 
-        // 卸载：交给安装目录里的 uninstall.ps1，确认、停程序、保留或删除数据的判断都在脚本里，
-        // 这里只负责把它拉起来——窗口用隐藏方式启动，用户看到的是脚本自己的对话框。
-        void Uninstall()
+        // 先在应用内选择并确认，再将明确的数据处理方式交给维护脚本。
+        // 取消或编辑未完成时不启动脚本；外部卸载入口也复用此对话框。
+        internal void Uninstall()
         {
-            string script = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "uninstall.ps1");
-            if (!File.Exists(script)) { Notice("这台机器上找不到卸载程序，请重新运行安装包", 2, true); return; }
+            if (uninstallWindow != null) { uninstallWindow.Activate(); return; }
+            uninstallWindow = new UninstallWindow(async delegate(bool removeData)
+            {
+                foreach (var editor in Editors.ToArray()) if (!await editor.ConfirmClose()) return false;
+                string script = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "uninstall.ps1");
+                if (!File.Exists(script)) throw new FileNotFoundException("卸载程序缺失，请使用完整安装包修复。", script);
+                Process.Start(new ProcessStartInfo("powershell.exe") { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden,
+                    Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + "\" -Mode " + (removeData ? "RemoveAll" : "KeepData") });
+                return true;
+            }, Gallery.Store.Root) { Owner = Settings };
+            try { uninstallWindow.ShowDialog(); } finally { uninstallWindow = null; }
+        }
+
+        internal void ShowSettings(string page = null)
+        {
+            TrayMenu.Close();
+            if (Settings == null)
+            {
+                bool wasRevealed = Shelf.Revealed;
+                if (Basket != null) Basket.Close(); if (TextWindow != null) TextWindow.Close();
+                Shelf.Reveal(false, false, 0);
+                Settings = new SettingsWindow(this);
+                Settings.Closed += delegate { Settings = null; if (!disposed && wasRevealed) Shelf.Reveal(true, false, 2, true); };
+                Settings.Show();
+            }
+            if (page != null) Settings.SelectPage(page);
+            if (Settings.WindowState == WindowState.Minimized) Settings.WindowState = WindowState.Normal;
+            Settings.Activate();
+        }
+
+        internal void SetPreference<T>(Func<T> get, Action<T> set, T value)
+        {
+            T previous = get(); set(value);
+            try { Gallery.Store.Save(); } catch { set(previous); throw; }
+            Shelf.Preview.SetEnabled(Gallery.Store.State.HoverPreview); Shelf.UpdateTexts();
+            TrayMenu.SyncCollection(Captures.CollectClipboard, Texts.CollectClipboard);
+            Captures.IgnoreCurrentClipboard();
+            textClipboardVersion++; textClipboardSequence = WindowsNative.GetClipboardSequenceNumber();
+        }
+
+        internal bool StartupEnabled
+        {
+            get { using (var key = Registry.CurrentUser.OpenSubKey(RunKey)) return key != null && string.Equals(key.GetValue("PickSnap") as string, Quote(Assembly.GetEntryAssembly().Location), StringComparison.OrdinalIgnoreCase); }
+        }
+        internal void SetStartup(bool value)
+        {
+            using (var key = Registry.CurrentUser.CreateSubKey(RunKey)) { if (value) key.SetValue("PickSnap", Quote(Assembly.GetEntryAssembly().Location)); else if (StartupEnabled) key.DeleteValue("PickSnap", false); }
+        }
+        internal void SyncCollectionControls()
+        {
+            TrayMenu.SyncCollection(Captures.CollectClipboard, Texts.CollectClipboard); Shelf.UpdateTexts();
+            if (Settings != null && Settings.CurrentPage == SettingsWindow.Pages[2]) Settings.RefreshPage();
+        }
+        internal void SetClipboardImages(bool value) { Captures.CollectClipboard = value; SyncCollectionControls(); }
+        internal void SetClipboardText(bool value)
+        {
+            Texts.CollectClipboard = value; textClipboardVersion++; textClipboardSequence = WindowsNative.GetClipboardSequenceNumber(); SyncCollectionControls();
+        }
+        internal void RebuildShortcut()
+        {
+            if (!CreateDesktopShortcut()) throw new IOException("无法创建桌面快捷方式。");
+        }
+        internal void EditShortcut(bool toggle)
+        {
+            if (ShortcutSettings != null) { ShortcutSettings.Activate(); return; }
+            var state = Gallery.Store.State;
+            ShortcutSettings = new ShortcutWindow(toggle ? state.ToggleModifiers : state.CaptureModifiers, toggle ? state.ToggleKey : state.CaptureKey,
+                toggle ? (Func<uint, uint, bool>)SetToggleShortcut : SetCaptureShortcut, toggle ? "显示 / 收起绳子" : "区域截图", () => ShortcutError);
+            ShortcutSettings.Closed += delegate { ShortcutSettings = null; if (Settings != null) Settings.RefreshPage(); };
+            ShortcutSettings.Owner = Settings; ShortcutSettings.ShowDialog();
+        }
+        internal bool SetToggleShortcut(uint modifiers, uint key) { return SetShortcut(true, modifiers, key); }
+        bool SetShortcut(bool toggle, uint modifiers, uint key)
+        {
+            ShortcutError = "组合键已被其他程序或另一个操作占用，请换一组。";
+            var state = Gallery.Store.State;
+            uint previousModifiers = toggle ? state.ToggleModifiers : state.CaptureModifiers;
+            uint previousKey = toggle ? state.ToggleKey : state.CaptureKey;
+            if (toggle) { state.ToggleModifiers = modifiers; state.ToggleKey = key; }
+            else { state.CaptureModifiers = modifiers; state.CaptureKey = key; }
+            bool committed = false;
             try
             {
-                Process.Start(new ProcessStartInfo("powershell.exe")
-                {
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + "\""
-                });
+                // 先占住新组合键，保存成功后再释放旧绑定。失败时只释放新绑定。
+                committed = toggle ? events.RegisterToggle(modifiers, key, Gallery.Store.Save) : events.RegisterCapture(modifiers, key, Gallery.Store.Save);
+                if (committed) UpdateShortcutLabels();
             }
-            catch (Exception error) { Gallery.Store.Log(error); Notice("无法启动卸载程序：" + error.Message, 2, true); }
+            catch (Exception error) { Gallery.Store.Log(error); ShortcutError = "无法保存设置，请检查 data 文件夹权限后重试。"; }
+            finally
+            {
+                if (!committed) { if (toggle) { state.ToggleModifiers = previousModifiers; state.ToggleKey = previousKey; } else { state.CaptureModifiers = previousModifiers; state.CaptureKey = previousKey; } }
+            }
+            return committed;
         }
 
         public async Task Start()
         {
+            if (started) return;
+            started = true;
             Shelf.Show();
             Shelf.Reveal(true, false, 4);
+            if (!string.IsNullOrEmpty(Gallery.Store.RecoveryNotice)) Notice(Gallery.Store.RecoveryNotice, 6, true);
             await Captures.Start();
-            RunAutoPurge(false);
-            AppUpdates.ClearStaleCache();
+            Captures.IgnoreCurrentClipboard();
+            textClipboardSequence = WindowsNative.GetClipboardSequenceNumber();
+            events.ClipboardChanged += Captures.ClipboardChanged;
+            events.ClipboardChanged += CollectClipboardText;
+            RunAutoPurge(false); AppUpdates.ClearStaleCache();
             if (automaticUpdates) updateTimer.Start();
         }
 
         // 旧图保留天数固定为 7：不给用户一个需要理解的档位设置，规则一句话能说清。
         const int PurgeDays = 7;
 
-        // 图片篮子面板底部的开关回调：开启后立刻清一次，之后启动时与每 6 小时复查；状态持久保存。
+        // 收集设置中的开关回调：开启后立刻清一次，之后启动时与每 6 小时复查；状态持久保存。
         internal void SetAutoPurge(bool on)
         {
-            Gallery.Store.State.AutoPurge = on;
-            Gallery.Store.Save();
+            SetPreference(() => Gallery.Store.State.AutoPurge, value => Gallery.Store.State.AutoPurge = value, on);
             if (on) { purgeTimer.Start(); RunAutoPurge(true); }
-            else { purgeTimer.Stop(); Notice("已关闭旧图自动清理"); }
+            else if (!on) { purgeTimer.Stop(); Notice("已关闭旧图自动清理"); }
         }
 
         // 按天数清理过期截图：notify 为 false 时只在真的清掉了东西才提示，避免每次启动打扰。
@@ -264,48 +274,45 @@ namespace ScreenLine
             try
             {
                 int removed = Gallery.PurgeOlderThan(PurgeDays);
-                if (removed > 0) Notice("已自动清理 " + removed + " 张超过 " + PurgeDays + " 天的截图，文件已进回收站");
+                if (removed > 0) Notice("已自动清理 " + removed + " 张超过 " + PurgeDays + " 天的图片");
                 else if (notify) Notice("已开启旧图自动清理：当前没有超过 " + PurgeDays + " 天的截图");
             }
             catch (Exception error) { Gallery.Store.Log(error); if (notify) Notice("清理未完成：" + error.Message); }
         }
 
-        void UpdateCaptureLabel()
+        internal string ShortcutError { get; private set; }
+        internal bool ToggleShortcutAvailable { get { return events.ShortcutAvailable; } }
+        internal bool CaptureShortcutAvailable { get { return events.CaptureShortcutAvailable; } }
+        void UpdateShortcutLabels()
         {
-            // 快捷键显示在「更多操作 › 截图快捷键」行尾；不放快捷格 ToolTip——
-            // 托盘面板是穿透/捕获频繁的窗口，ToolTip 一旦弹出常因收不到移开事件而卡住不消失。
-            if (shortcutItem != null)
-                shortcutItem.InputGestureText = events.CaptureShortcutAvailable ? ShortcutWindow.Label(Gallery.Store.State.CaptureModifiers, Gallery.Store.State.CaptureKey) : "快捷键被占用";
+            var state = Gallery.Store.State;
+            TrayMenu.SetShortcuts(events.ShortcutAvailable ? ShortcutWindow.Label(state.ToggleModifiers, state.ToggleKey) : "未生效", events.CaptureShortcutAvailable ? ShortcutWindow.Label(state.CaptureModifiers, state.CaptureKey) : "未生效");
+        }
+        internal void ToggleShelf()
+        {
+            if (ShortcutSettings != null || Shelf.Capturing) return;
+            bool show = Settings != null || !Shelf.Revealed;
+            if (Appearance != null) Appearance.Close();
+            if (Settings != null) Settings.Close();
+            TrayMenu.Close();
+            if (Shelf.Revealed != show) Shelf.Toggle();
+            else if (show) Shelf.Reveal(true, true, 0);
         }
 
-        internal bool SetCaptureShortcut(uint modifiers, uint key)
-        {
-            if (!events.RegisterCapture(modifiers, key)) return false;
-            uint previousModifiers = Gallery.Store.State.CaptureModifiers, previousKey = Gallery.Store.State.CaptureKey;
-            Gallery.Store.State.CaptureModifiers = modifiers; Gallery.Store.State.CaptureKey = key;
-            try { Gallery.Store.Save(); }
-            catch (Exception error)
-            {
-                Gallery.Store.State.CaptureModifiers = previousModifiers; Gallery.Store.State.CaptureKey = previousKey;
-                events.RegisterCapture(previousModifiers, previousKey); Gallery.Store.Log(error); Notice("无法保存快捷键，请重试。"); return false;
-            }
-            UpdateCaptureLabel(); return true;
-        }
+        internal bool SetCaptureShortcut(uint modifiers, uint key) { return SetShortcut(false, modifiers, key); }
 
         internal async void ShowCapture()
         {
-            if (disposed || Shelf.Capturing) return;
+            if (disposed || Shelf.Capturing || ShortcutSettings != null) return;
             Shelf.Capturing = true;
-            var display = WindowsNative.ScreenAtPointer();
             bool revealed = Shelf.Revealed;
             try
             {
                 TrayMenu.Close(); if (Basket != null) Basket.Close(); if (TextWindow != null) TextWindow.Close();
-                if (Appearance != null) Appearance.Close(); if (ShortcutSettings != null) ShortcutSettings.Close();
+                if (Appearance != null) Appearance.Close(); if (Settings != null) Settings.Close();
                 Shelf.Reveal(false, false, 0); await Task.Delay(260);
                 if (disposed) return;
-                Capture = new CaptureWindow(display);
-                var result = await Capture.PickAsync(); Capture = null;
+                var result = await CaptureWindow.PickAcrossScreens(window => Capture = window);
                 if (disposed) return;
                 if (result != null) await Captures.AcceptCapture(result);
                 else if (revealed) Shelf.Reveal(true, false, 2);
@@ -314,69 +321,52 @@ namespace ScreenLine
             finally { if (Capture != null) Capture.Close(); Capture = null; Shelf.Capturing = false; }
         }
 
-        async Task CheckForUpdates(bool manual)
+        internal Task<UpdateCheckResult> CheckForUpdates(bool manual)
         {
-            if (disposed || checkingUpdates) return;
-            if (manual && availableUpdate != null) { ShowUpdate(); return; }
-            checkingUpdates = true; updateMenu.IsEnabled = false; updateMenu.Header = "正在检查更新";
+            if (updateCheckTask != null && !updateCheckTask.IsCompleted) return updateCheckTask;
+            if (disposed) return Task.FromResult(LastUpdateCheck);
+            LastUpdateCheck = new UpdateCheckResult { Phase = UpdateCheckPhase.Checking, Message = "正在检查更新…" };
+            if (Settings != null) Settings.RefreshUpdateStatus();
+            updateCheckTask = CheckUpdatesCore(manual);
+            return updateCheckTask;
+        }
+        async Task<UpdateCheckResult> CheckUpdatesCore(bool manual)
+        {
+            await Task.Yield(); // 让共享任务先赋值，手动检查可等待已开始的后台请求。
+            UpdateCheckResult result;
             try
             {
                 availableUpdate = await updates.CheckAsync(updateLifetime.Token);
-                if (disposed) return;
-                // 只要请求成功看到线上正式版本，就记下「上次成功确认」的版本与时间；
-                // 之后再遇到限流/超时时，可以据此说明依据，而不是笼统报连接失败。
-                if (!string.IsNullOrEmpty(updates.LastSeenVersion))
+                if (string.IsNullOrEmpty(updates.LastSeenVersion)) throw new InvalidDataException("尚未找到可用的正式版本，请打开发布页查看。");
+                Gallery.Store.State.LastConfirmedVersion = updates.LastSeenVersion;
+                Gallery.Store.State.LastConfirmedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+                try { Gallery.Store.Save(); } catch (Exception error) { Gallery.Store.Log(error); }
+                result = new UpdateCheckResult { Phase = availableUpdate == null ? UpdateCheckPhase.Current : UpdateCheckPhase.Available, Release = availableUpdate, CheckedAt = DateTime.Now,
+                    Message = availableUpdate == null ? "已是最新版本" : "发现新版本 v" + availableUpdate.Version + "，查看说明后即可更新。" };
+                if (!disposed && !manual && availableUpdate != null && availableUpdate.Version != Gallery.Store.State.SkippedUpdate && Gallery.Store.State.LastUpdateNotification != availableUpdate.Version)
                 {
-                    Gallery.Store.State.LastConfirmedVersion = updates.LastSeenVersion;
-                    Gallery.Store.State.LastConfirmedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
-                    Gallery.Store.Save();
-                }
-                if (availableUpdate == null) { if (manual) Notice("你当前已是最新版本", 2, true); }
-                else if (manual) ShowUpdate();
-                else if (availableUpdate.Version != Gallery.Store.State.SkippedUpdate && Gallery.Store.State.LastUpdateNotification != availableUpdate.Version)
-                {
-                    // 自动后台检查只在新版本时出气泡，跳过的版本与已提醒过的保持静默。
-                    tray.ShowBalloonTip(10000, "拾帧有新版本 " + availableUpdate.Version, "点击查看更新并下载安装。", Forms.ToolTipIcon.Info);
-                    Gallery.Store.State.LastUpdateNotification = availableUpdate.Version; Gallery.Store.Save();
+                    tray.ShowBalloonTip(10000, "PickSnap 有新版本 " + availableUpdate.Version, "点击查看更新，下载与重启安装由你决定。", Forms.ToolTipIcon.Info);
+                    Gallery.Store.State.LastUpdateNotification = availableUpdate.Version;
+                    try { Gallery.Store.Save(); } catch (Exception error) { Gallery.Store.Log(error); }
                 }
             }
             catch (Exception error)
             {
-                // 手动检查失败：小窗说明具体原因（超时/限流/其他），并给直接打开下载页的入口；
-                // 自动检查保持静默。若上次已成功确认过「本地就是最新版」，本次只是联网复查失败，
-                // 就给一条温和的确认，不再用「检查更新失败」的窗口惊扰用户。
-                if (!disposed && manual)
-                {
-                    if (ConfirmedUpToDate())
-                        Notice("已是最新版（本次未能联网复查，依据上次成功确认）", 3, true);
-                    else
-                        UpdateWindow.ShowCheckFailed(error, AppUpdates.CurrentVersion);
-                }
+                Gallery.Store.Log(error);
+                string reason = error is OperationCanceledException ? "检查超时或已取消，请检查网络或代理后重试。" : error is System.Net.Http.HttpRequestException ? "无法连接 GitHub，请检查网络或代理后重试。" : error.Message;
+                result = new UpdateCheckResult { Phase = UpdateCheckPhase.Failed, CheckedAt = DateTime.Now, Message = "检查失败：" + reason };
             }
-            finally
-            {
-                checkingUpdates = false; updateMenu.IsEnabled = true;
-                updateMenu.Header = availableUpdate == null ? "检查更新" : "更新到 " + availableUpdate.Version;
-            }
+            LastUpdateCheck = result;
+            if (!disposed && Settings != null) Settings.RefreshUpdateStatus();
+            return result;
         }
 
-        // 最近一次成功检查确认的线上版本不高于本地，且确认时间不超过 7 天，
-        // 才认为「可以依据上次确认说是最新版」；过期太久的确认不作为依据。
-        bool ConfirmedUpToDate()
-        {
-            string version = Gallery.Store.State.LastConfirmedVersion;
-            if (string.IsNullOrEmpty(version)) return false;
-            DateTime when;
-            if (!DateTime.TryParse(Gallery.Store.State.LastConfirmedAt, out when) || (DateTime.Now - when).TotalDays > 7) return false;
-            try { return new Version(version) <= new Version(AppUpdates.CurrentVersion); }
-            catch { return false; }
-        }
-
-        void ShowUpdate()
+        internal void ShowUpdate()
         {
             if (disposed || availableUpdate == null) return;
             if (updateWindow != null) { updateWindow.Activate(); return; }
-            updateWindow = new UpdateWindow(availableUpdate, updates, async delegate(string work)
+            var release = availableUpdate;
+            updateWindow = new UpdateWindow(release, updates, async delegate(string work)
             {
                 foreach (var editor in Editors.ToArray()) if (!await editor.ConfirmClose()) return false;
                 AppUpdates.Install(work);
@@ -385,22 +375,20 @@ namespace ScreenLine
             }, delegate
             {
                 // 跳过此版本：记录版本号，自动检查不再提醒它，直到下一个新版本；手动检查仍然可见。
-                Gallery.Store.State.SkippedUpdate = availableUpdate.Version;
+                Gallery.Store.State.SkippedUpdate = release.Version;
                 Gallery.Store.Save();
-                availableUpdate = null;
-                updateMenu.Header = "检查更新";
-            });
+                LastUpdateCheck.Message = "已跳过 v" + release.Version + " 的自动提醒，仍可手动查看与安装。";
+                if (Settings != null) Settings.RefreshUpdateStatus();
+            }, async delegate { foreach (var editor in Editors.ToArray()) if (!await editor.ConfirmClose()) return false; return true; });
             updateWindow.Closed += delegate { updateWindow = null; };
-            updateWindow.Show();
+            updateWindow.Owner = Settings; updateWindow.Topmost = true; updateWindow.WindowStartupLocation = Settings == null ? WindowStartupLocation.CenterScreen : WindowStartupLocation.CenterOwner; updateWindow.Show();
         }
 
         void EnableClipboard()
         {
-            Captures.CollectClipboard = true;
-            collect.IsChecked = true;
+            SetClipboardImages(true);
         }
 
-        void SyncAutoHang() { autoHang.IsChecked = Captures.AutoHang; }
 
         // 图片篮子软上限（100 张）：只提醒，不删除任何文件。
         // 只在「图片数量变多」时（即又收到一张新图）提示一次；删除、挂绳等操作波动不打扰。
@@ -409,22 +397,12 @@ namespace ScreenLine
             int count = Gallery.Collected.Count;
             bool grew = count > lastCollectedCount;
             lastCollectedCount = count;
-            if (!grew || count <= BasketLimit) return;
+            if (!grew || count <= BasketLimit || DateTime.UtcNow - lastBasketNotice < TimeSpan.FromHours(6)) return;
+            lastBasketNotice = DateTime.UtcNow;
             Notice("图片篮子已超过 " + BasketLimit + " 张，请打开图片篮子清理不需要的截图。");
         }
 
-        void SyncScreens()
-        {
-            TrayMenu.SetScreens(WindowsNative.Screens, Gallery.Store.State.DisplayDevice, SelectScreen);
-        }
-
-        void SelectScreen(string device)
-        {
-            TrayMenu.Close();
-            try { Shelf.SetDisplay(device); }
-            catch (Exception error) { Gallery.Store.Log(error); Notice("无法保存屏幕设置：" + error.Message); }
-            SyncScreens();
-        }
+        internal void SelectScreen(string device) { Shelf.SetDisplay(device); }
 
         async void CollectClipboardText()
         {
@@ -445,12 +423,13 @@ namespace ScreenLine
         {
             if (Basket != null) { Basket.Activate(); return; }
             Gallery.Prune();
-            Basket = new BasketWindow(Gallery, delegate(bool value) { Captures.AutoHang = value; }, Captures.Hang, Act, Shelf.IsPinned, Shelf.RoomForHanging, () => Shelf.RopeCapacity,
-                () => Gallery.Store.State.AutoPurge, SetAutoPurge);
+            bool wasRevealed = Shelf.Revealed;
+            var screen = WindowsNative.ScreenAtPointer(); bool compact = screen.WorkingArea.Height / WindowsNative.MonitorScale(screen) < 650;
+            Basket = new BasketWindow(Gallery, Captures.Hang, Act, Shelf.IsPinned, Shelf.RoomForHanging, () => Shelf.RopeCapacity, SetAutoPurge);
             Basket.Owner = Shelf;
             Shelf.ChoosingBasket = true;
-            Shelf.Reveal(true, false, 0);
-            Basket.Closed += delegate { Basket = null; Shelf.ChoosingBasket = false; };
+            Shelf.Reveal(!compact, false, 0);
+            Basket.Closed += delegate { Basket = null; Shelf.ChoosingBasket = false; if (!disposed && compact && wasRevealed && Settings == null) Shelf.Reveal(true, false, 2, true); };
             Basket.Show();
         }
 
@@ -459,7 +438,7 @@ namespace ScreenLine
             if (TextWindow != null) { TextWindow.Close(); return; }
             // 收集关着且一条文字都没有时信封根本不摆出来（绳子右端没有锚点），
             // 硬开窗只会得到一块马上要自毁的空面板；轻提示一句就够。
-            if (Texts.Items.Count == 0 && !Texts.CollectClipboard) { Notice("文字信封是空的：在托盘「剪贴板收集」中开启「文字」后才会收集", 2, true); return; }
+            if (Texts.Items.Count == 0) { Notice(Texts.CollectClipboard ? "文字信封还是空的，复制文字后会收进这里。" : "文字信封还是空的，可从托盘开启「收集文字」。", 2, true); return; }
             Shelf.Reveal(true, false, 0);
             Shelf.ChoosingTexts = true;
             TextWindow = new TextWindow(Texts, Shelf);
@@ -467,7 +446,15 @@ namespace ScreenLine
             TextWindow.Show();
         }
 
-        void ShowAppearance()
+        async void ChangeTheme(string mode)
+        {
+            if (Gallery.Store.State.AppTheme == mode) return;
+            foreach (var editor in Editors.ToArray()) if (!await editor.ConfirmClose()) return;
+            try { SetPreference(() => Gallery.Store.State.AppTheme, value => Gallery.Store.State.AppTheme = value, mode); Program.Restart(); }
+            catch (Exception error) { Gallery.Store.Log(error); Notice("配色保存失败，请重试"); }
+        }
+
+        internal void ShowAppearance()
         {
             if (Appearance != null) { Appearance.Activate(); return; }
             Appearance = new AppearanceWindow(Shelf.Appearance, Gallery, delegate(LineTheme theme)
@@ -476,20 +463,11 @@ namespace ScreenLine
                 Gallery.Store.Save();
                 Shelf.ApplyTheme(theme);
                 Shelf.Reveal(true, false, 3);
-            }, Gallery.Store.State.AppTheme, delegate(string mode)
-            {
-                if (Gallery.Store.State.AppTheme == mode) return;
-                Gallery.Store.State.AppTheme = mode;
-                Gallery.Store.Save();
-                // 配色牵涉到所有已建窗口的画刷，重启一次比逐个重刷更稳，用户几乎无感。
-                DispatcherTimer restart = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(220) };
-                restart.Tick += delegate { restart.Stop(); Program.Restart(); };
-                restart.Start();
-            });
-            Appearance.Owner = Shelf;
+            }, Gallery.Store.State.AppTheme, ChangeTheme);
+            Appearance.Owner = (Window)Settings ?? Shelf;
             Shelf.ChoosingAppearance = true;
             Shelf.Reveal(true, false, 0);
-            Appearance.Closed += delegate { Appearance = null; Shelf.ChoosingAppearance = false; };
+            Appearance.Closed += delegate { Appearance = null; Shelf.ChoosingAppearance = false; if (Settings != null) Shelf.Reveal(false, false, 0); };
             Appearance.Show();
         }
 
@@ -646,6 +624,7 @@ namespace ScreenLine
             {
                 if (FileRules.IsInside(target.Path, Gallery.Store.Inbox))
                 {
+                    FileRules.AssertPlainTree(target.Path, Gallery.Store.Root);
                     FileSystem.DeleteFile(target.Path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
                     Shelf.ShowDiscard(target);
                     Gallery.Prune();
@@ -662,14 +641,16 @@ namespace ScreenLine
             if (Capture != null) Capture.Close();
             if (ShortcutSettings != null) ShortcutSettings.Close();
             if (updateWindow != null) updateWindow.Close();
+            if (uninstallWindow != null) uninstallWindow.Close();
             updates.Dispose();
             if (Basket != null) Basket.Close();
             if (TextWindow != null) TextWindow.Close();
             if (Appearance != null) Appearance.Close();
+            if (Settings != null) Settings.Close();
             if (notice != null) notice.Close();
             foreach (var editor in Editors.ToArray()) editor.CloseWithoutPrompt();
             TrayMenu.Close();
-            Gallery.Changed -= SyncAutoHang;
+            Gallery.Changed -= CheckCacheLimit;
             Texts.Changed -= Shelf.UpdateTexts;
             Captures.Dispose();
             events.Dispose();
@@ -702,18 +683,18 @@ namespace ScreenLine
         internal static void Restart()
         {
             string exe = Assembly.GetEntryAssembly().Location;
-            try
+            if (!File.Exists(exe)) throw new FileNotFoundException("找不到程序文件。", exe);
+            // Exit 的控制器清理先执行，释放热键与窗口后再启动，避免新进程把自己的快捷键误判为占用。
+            Application.Current.Exit += delegate
             {
                 if (instanceMutex != null)
                 {
-                    try { instanceMutex.ReleaseMutex(); }
-                    catch { }
-                    instanceMutex.Dispose();
-                    instanceMutex = null;
+                    try { instanceMutex.ReleaseMutex(); } catch (ApplicationException) { }
+                    instanceMutex.Dispose(); instanceMutex = null;
                 }
-                Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(exe) });
-            }
-            catch { }
+                try { Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(exe) }); }
+                catch (Exception error) { MessageBox.Show("配色已保存，请手动重新启动 PickSnap。\n" + error.Message, "PickSnap"); }
+            };
             Application.Current.Shutdown();
         }
 
@@ -721,15 +702,16 @@ namespace ScreenLine
         public static void Main(string[] arguments)
         {
             if (Array.IndexOf(arguments, "--quit") >= 0) { WindowsNative.RequestExit(); return; }
+            bool uninstallRequested = Array.IndexOf(arguments, "--uninstall") >= 0;
             bool first;
-            using (var instance = new Mutex(true, @"Local\TangHao.ScreenLine.Windows", out first))
+            using (var instance = new Mutex(true, @"Local\PickSnap.Windows", out first))
             {
-                if (!first) { WindowsNative.ShowExisting(); return; }
+                if (!first) { if (Array.IndexOf(arguments, "--uninstall") >= 0) WindowsNative.ShowUninstall(); else WindowsNative.ShowExisting(Array.IndexOf(arguments, "--settings") >= 0); return; }
                 instanceMutex = instance;
-                StateStore.AdoptStagedData();
+                if (!uninstallRequested) StateStore.AdoptStagedData();
                 var store = new StateStore(StateStore.DefaultRoot);
                 // 首次启动（没有旧配置）自动在桌面放一个快捷方式，之后不再重复；删掉的用户不会被强行加回。
-                if (store.FreshInstall)
+                if (store.FreshInstall && !uninstallRequested)
                 {
                     try { DesktopController.CreateDesktopShortcut(); }
                     catch (Exception error) { store.Log(error); }
@@ -740,7 +722,24 @@ namespace ScreenLine
                 LightTheme.Install(app);
                 DesktopController controller = null;
                 app.DispatcherUnhandledException += delegate(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs args) { store.Log(args.Exception); args.Handled = true; };
-                app.Startup += async delegate { controller = new DesktopController(store, WindowsNative.ScreenshotFolder()); await controller.Start(); };
+                app.Startup += async delegate
+                {
+                    try
+                    {
+                        controller = new DesktopController(store, WindowsNative.ScreenshotFolder());
+                        if (uninstallRequested)
+                        {
+                            // 独立卸载入口只展示确认页，不启动收集、自动清理或更新检查。
+                            controller.ShowSettings("更新与卸载"); controller.Uninstall(); app.Shutdown(); return;
+                        }
+                        await controller.Start();
+                        if (Array.IndexOf(arguments, "--settings") >= 0) controller.ShowSettings();
+                    }
+                    catch (Exception error)
+                    {
+                        store.Log(error); MessageBox.Show("PickSnap 启动未完成：" + error.Message + "\n请保留 data 文件夹并重新运行完整安装包。", "PickSnap", MessageBoxButton.OK, MessageBoxImage.Error); app.Shutdown(1);
+                    }
+                };
                 app.Exit += delegate { if (controller != null) controller.Dispose(); };
                 app.Run();
             }

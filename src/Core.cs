@@ -22,6 +22,14 @@ namespace ScreenLine
         public bool HoverPreview { get; set; }
         // 关闭后鼠标移到屏幕顶部不再自动展开，仍可用 Ctrl+Alt+T 或托盘图标显示（默认关闭本项 = 悬停展开可用）。
         public bool NoHoverReveal { get; set; }
+        public string RevealZone { get; set; }
+        public int RevealDelayMs { get; set; }
+        public uint ToggleModifiers { get; set; }
+        public uint ToggleKey { get; set; }
+        public bool PauseCollection { get; set; }
+        public bool CollectScreenshotFiles { get; set; }
+        public int ImageCollectionVersion { get; set; }
+        public string DataRoot { get; set; }
         public string Theme { get; set; }
         // 界面配色：auto（跟随系统）/ light / dark
         public string AppTheme { get; set; }
@@ -37,7 +45,7 @@ namespace ScreenLine
         public string LastConfirmedAt { get; set; }
         public uint CaptureModifiers { get; set; }
         public uint CaptureKey { get; set; }
-        // 旧图自动清理：默认关闭。开启后按天数把过期的图片移出（收集文件夹内的副本进回收站）。
+        // 旧图自动清理：首次使用默认开启，已有设置保持原选择。收集文件夹内的过期副本进回收站。
         public bool AutoPurge { get; set; }
         // 保留最近多少天的截图：配合上面的开关使用，默认 7 天。
         public int AutoPurgeDays { get; set; }
@@ -45,7 +53,7 @@ namespace ScreenLine
         public List<string> Collection { get; set; }
         public List<TextItem> Texts { get; set; }
 
-        public SavedState() { Images = new List<string>(); Collection = new List<string>(); Texts = new List<TextItem>(); CardOffsets = new Dictionary<string, double>(); Theme = "classic"; AppTheme = "auto"; AutoHang = true; HoverPreview = true; AutoPurgeDays = 7; CaptureModifiers = 3; CaptureKey = (uint)'S'; }
+        public SavedState() { Images = new List<string>(); Collection = new List<string>(); Texts = new List<TextItem>(); CardOffsets = new Dictionary<string, double>(); CollectClipboard = true; CollectScreenshotFiles = true; RevealZone = "full"; RevealDelayMs = 450; ToggleModifiers = 3; ToggleKey = (uint)'T'; Theme = "classic"; AppTheme = "auto"; AutoHang = true; HoverPreview = true; AutoPurge = true; AutoPurgeDays = 7; CaptureModifiers = 3; CaptureKey = (uint)'S'; }
     }
 
     internal sealed class StateStore
@@ -76,7 +84,9 @@ namespace ScreenLine
 
         public readonly string Root;
         public readonly string Inbox;
-        public readonly SavedState State;
+        public SavedState State { get; private set; }
+        public string RecoveryNotice { get; private set; }
+        bool recovered;
         // 首次启动（尚无 state.json）：用于触发一次性动作（如在桌面创建快捷方式）。
         public bool FreshInstall { get; private set; }
         readonly JavaScriptSerializer serializer = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
@@ -92,25 +102,100 @@ namespace ScreenLine
             if (!File.Exists(file)) return;
             try
             {
-                State = serializer.Deserialize<SavedState>(File.ReadAllText(file, Encoding.UTF8)) ?? new SavedState();
+                State = ReadSavedState(file);
                 if (State.Images == null) State.Images = new List<string>();
                 if (State.Collection == null) State.Collection = new List<string>();
                 if (State.Texts == null) State.Texts = new List<TextItem>();
                 if (State.CardOffsets == null) State.CardOffsets = new Dictionary<string, double>();
+                if (State.RevealDelayMs < 150 || State.RevealDelayMs > 2000) State.RevealDelayMs = 450;
                 if (string.IsNullOrEmpty(State.AppTheme)) State.AppTheme = "auto";
                 if (State.AutoPurgeDays <= 0) State.AutoPurgeDays = 7;
             }
-            catch (ArgumentException ex) { Log(ex); }
-            catch (InvalidOperationException ex) { Log(ex); }
-            catch (IOException ex) { Log(ex); }
+            catch (ArgumentException ex) { Recover(ex); }
+            catch (InvalidOperationException ex) { Recover(ex); }
+            catch (FormatException ex) { Recover(ex); }
+            catch (OverflowException ex) { Recover(ex); }
+            catch (IOException ex) { Recover(ex); }
+            catch (UnauthorizedAccessException ex) { Recover(ex); }
+            NormalizeAndRelocate();
+        }
+
+        SavedState ReadSavedState(string path)
+        {
+            var fields = serializer.Deserialize<Dictionary<string, object>>(File.ReadAllText(path, Encoding.UTF8));
+            if (fields == null) throw new FormatException("配置内容为空。");
+            var saved = serializer.ConvertToType<SavedState>(fields);
+            // 旧配置中缺少字段时沿用旧默认值，避免升级意外开启清理。
+            if (!fields.ContainsKey("AutoPurge")) saved.AutoPurge = false;
+            if (!fields.ContainsKey("RevealZone")) saved.RevealZone = "center";
+            return saved;
+        }
+
+        void Recover(Exception error)
+        {
+            Log(error); recovered = true;
+            try { File.Copy(file, file + ".damaged-" + DateTime.UtcNow.ToString("yyyyMMddHHmmssfff")); } catch { }
+            try
+            {
+                State = ReadSavedState(file + ".bak");
+                if (State == null) throw new InvalidDataException("配置备份为空。");
+                RecoveryNotice = "配置损坏，已恢复上一份备份。损坏文件已留存。";
+            }
+            catch (Exception backupError) { Log(backupError); State = new SavedState { AutoPurge = false }; RecoveryNotice = "配置无法读取，已保留原文件。图片仍在收集文件夹中，文字可从配置备份恢复。"; }
+        }
+
+        void NormalizeAndRelocate()
+        {
+            if (State.PauseCollection)
+            {
+                State.CollectScreenshotFiles = State.CollectClipboard = State.CollectTextClipboard = false;
+                State.PauseCollection = false;
+            }
+            if (State.ImageCollectionVersion < 1)
+            {
+                State.CollectClipboard = State.CollectClipboard || State.CollectScreenshotFiles;
+                State.ImageCollectionVersion = 1;
+            }
+            State.CollectScreenshotFiles = State.CollectClipboard; State.AutoHang = true;
+            if (State.Images == null) State.Images = new List<string>();
+            if (State.Collection == null) State.Collection = new List<string>();
+            if (State.Texts == null) State.Texts = new List<TextItem>();
+            if (State.CardOffsets == null) State.CardOffsets = new Dictionary<string, double>();
+            State.Texts.RemoveAll(item => item == null || item.Content == null);
+            if (string.IsNullOrEmpty(State.DataRoot))
+            {
+                foreach (string path in State.Collection.Concat(State.Images).Where(p => !string.IsNullOrEmpty(p)))
+                {
+                    try
+                    {
+                        var parent = new DirectoryInfo(Path.GetDirectoryName(path));
+                        if (!File.Exists(path) && parent.Name.Equals("Captures", StringComparison.OrdinalIgnoreCase) && parent.Parent != null
+                            && parent.Parent.Name.Equals("data", StringComparison.OrdinalIgnoreCase) && File.Exists(Path.Combine(Inbox, Path.GetFileName(path)))) { State.DataRoot = parent.Parent.FullName; break; }
+                    }
+                    catch (ArgumentException) { }
+                    catch (NotSupportedException) { }
+                }
+            }
+            if (string.IsNullOrEmpty(State.DataRoot) || FileRules.SameFile(State.DataRoot, Root)) return;
+            string oldInbox = Path.Combine(State.DataRoot, "Captures");
+            Func<string, string> move = path => {
+                if (string.IsNullOrEmpty(path)) return path;
+                string target = Path.Combine(Inbox, Path.GetFileName(path));
+                return FileRules.IsInside(path, oldInbox) && File.Exists(target) ? target : path;
+            };
+            State.Images = State.Images.Where(p => !string.IsNullOrEmpty(p)).Select(move).ToList();
+            State.Collection = State.Collection.Where(p => !string.IsNullOrEmpty(p)).Select(move).ToList();
+            State.CardOffsets = State.CardOffsets.GroupBy(p => move(p.Key), StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Last().Value, StringComparer.OrdinalIgnoreCase);
         }
 
         public void Save()
         {
             Directory.CreateDirectory(Root);
             string temporary = file + ".tmp";
+            State.DataRoot = Root;
             File.WriteAllText(temporary, serializer.Serialize(State), new UTF8Encoding(false));
-            FileRules.Commit(temporary, file);
+            FileRules.Commit(temporary, file, recovered ? null : file + ".bak");
+            recovered = false;
         }
 
         string lastError;
@@ -202,8 +287,8 @@ namespace ScreenLine
             var existing = Items.Find(item => item.Content == content);
             if (existing != null)
             {
-                // 再次复制已收藏的同一条文字：把它提到最前面，时间也更新为这一次，
-                // 这样列表始终按「最近复制」排序，而不是按「最早收藏」。
+                // 再次复制已收集的同一条文字：把它提到最前面，时间也更新为这一次，
+                // 这样列表始终按「最近复制」排序，而不是按「最早收集」。
                 int index = Items.IndexOf(existing);
                 if (index == 0) return existing;
                 DateTime previousTime = existing.CreatedUtc;
@@ -215,13 +300,14 @@ namespace ScreenLine
                 if (Changed != null) Changed();
                 return existing;
             }
+            var previous = Items.ToArray();
             var added = new TextItem { Id = Guid.NewGuid().ToString("N"), Content = content, CreatedUtc = DateTime.UtcNow };
             Items.Insert(0, added);
             // 文字信封自动修剪：剪贴板文字是零碎内容，只保留最近 100 条，
             // 避免 state.json 随长期使用无限膨胀；篮子里的图片是用户文件，不做任何自动清理。
             while (Items.Count > 100) Items.RemoveAt(Items.Count - 1);
             try { Store.Save(); }
-            catch { Items.Remove(added); throw; }
+            catch { Items.Clear(); Items.AddRange(previous); throw; }
             if (Changed != null) Changed();
             return added;
         }
@@ -281,17 +367,70 @@ namespace ScreenLine
         }
     }
 
+    // 删除历史只保留在当前面板内。按原列表的相邻条目定位，逐条恢复也不会打乱顺序。
+    internal sealed class TextEditHistory
+    {
+        sealed class Batch
+        {
+            internal TextItem[] Order;
+            internal readonly List<TextItem> Pending = new List<TextItem>();
+        }
+        sealed class Recovery { internal Batch Batch; internal TextItem[] Items; }
+        readonly TextCollection texts;
+        readonly List<Batch> batches = new List<Batch>();
+        readonly Stack<Recovery> redo = new Stack<Recovery>();
+        internal TextEditHistory(TextCollection texts) { this.texts = texts; }
+        internal int PendingCount { get { var batch = batches.LastOrDefault(b => b.Pending.Count > 0); return batch == null ? 0 : batch.Pending.Count; } }
+        internal bool CanRedo { get { return redo.Count > 0; } }
+        internal void Delete(TextItem[] items)
+        {
+            var batch = new Batch { Order = texts.Items.ToArray() };
+            var removed = texts.RemoveUndoable(items);
+            if (removed.Count == 0) return;
+            batch.Pending.AddRange(removed.Select(pair => pair.Value)); batches.Add(batch); redo.Clear();
+            if (batches.Count > 20) batches.RemoveAt(0);
+        }
+        internal int Undo(bool wholeBatch)
+        {
+            var batch = batches.LastOrDefault(b => b.Pending.Count > 0);
+            if (batch == null) return 0;
+            var items = wholeBatch ? batch.Pending.ToArray() : batch.Pending.Take(1).ToArray();
+            var working = texts.Items.ToList(); var restore = new List<KeyValuePair<int, TextItem>>();
+            foreach (var item in items)
+            {
+                if (working.Any(t => t.Id == item.Id)) continue;
+                int original = Array.IndexOf(batch.Order, item);
+                var next = batch.Order.Skip(original + 1).FirstOrDefault(t => working.Contains(t));
+                var previous = batch.Order.Take(original).LastOrDefault(t => working.Contains(t));
+                int index = next != null ? working.IndexOf(next) : previous != null ? working.IndexOf(previous) + 1 : working.Count;
+                working.Insert(index, item); restore.Add(new KeyValuePair<int, TextItem>(index, item));
+            }
+            texts.Restore(restore);
+            foreach (var item in items) batch.Pending.Remove(item);
+            redo.Push(new Recovery { Batch = batch, Items = restore.Select(p => p.Value).ToArray() });
+            return restore.Count;
+        }
+        internal int Redo()
+        {
+            if (redo.Count == 0) return 0;
+            var action = redo.Peek(); var removed = texts.RemoveUndoable(action.Items); redo.Pop();
+            action.Batch.Pending.AddRange(removed.Select(p => p.Value));
+            action.Batch.Pending.Sort((a, b) => Array.IndexOf(action.Batch.Order, a).CompareTo(Array.IndexOf(action.Batch.Order, b)));
+            return removed.Count;
+        }
+    }
+
     internal static class FileRules
     {
         static readonly string[] extensions = { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff" };
 
-        public static void Commit(string temporary, string destination)
+        public static void Commit(string temporary, string destination, string backup = null)
         {
             for (int attempt = 0; ; attempt++)
             {
                 try
                 {
-                    if (File.Exists(destination)) File.Replace(temporary, destination, null);
+                    if (File.Exists(destination)) File.Replace(temporary, destination, backup);
                     else File.Move(temporary, destination);
                     return;
                 }
@@ -308,6 +447,27 @@ namespace ScreenLine
         public static bool IsImage(string path)
         {
             return extensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+        }
+
+        public static void AssertPlainTree(string path, string root)
+        {
+            string full = Path.GetFullPath(path), allowed = Path.GetFullPath(root);
+            if (!SameFile(full, allowed) && !IsInside(full, allowed)) throw new IOException("文件路径超出允许的目录。");
+            string ancestor = full;
+            while (!string.IsNullOrEmpty(ancestor) && ancestor.Length >= allowed.Length)
+            {
+                if ((File.Exists(ancestor) || Directory.Exists(ancestor)) && (File.GetAttributes(ancestor) & FileAttributes.ReparsePoint) != 0) throw new IOException("目录包含链接，已停止文件操作。");
+                ancestor = Path.GetDirectoryName(ancestor);
+            }
+            if (!Directory.Exists(full)) return;
+            var pending = new Stack<string>(); pending.Push(full);
+            while (pending.Count > 0)
+                foreach (string child in Directory.EnumerateFileSystemEntries(pending.Pop()))
+                {
+                    var attributes = File.GetAttributes(child);
+                    if ((attributes & FileAttributes.ReparsePoint) != 0) throw new IOException("目录包含链接，已停止文件操作。");
+                    if ((attributes & FileAttributes.Directory) != 0) pending.Push(child);
+                }
         }
 
         public static bool IsInside(string path, string directory)
@@ -362,11 +522,17 @@ namespace ScreenLine
             if (IsPlainImage(formats)) return true;
             if (formats.Contains("FileDrop"))
             {
-                bool wechat = string.Equals(source, "Weixin", StringComparison.OrdinalIgnoreCase) || string.Equals(source, "WeChat", StringComparison.OrdinalIgnoreCase);
-                if (!wechat || !formats.Contains("image/png") || !formats.Contains("DeviceIndependentBitmap")
-                    || formats.Contains("HTML Format") || formats.Contains("Rich Text Format") || formats.Contains("UnicodeText") || formats.Contains("Text") || formats.Contains("System.String")) return false;
+                bool captureApp = new[] { "Weixin", "WeChat", "QQ", "QQNT", "TIM", "QQScreenshot" }.Contains(source, StringComparer.OrdinalIgnoreCase);
+                if (!captureApp || !HasImage(formats)
+                    || formats.Contains("HTML Format") || formats.Contains("Rich Text Format")) return false;
                 var files = data.GetData(DataFormats.FileDrop) as string[];
                 if (files == null || files.Length != 1 || !FileRules.IsImage(files[0])) return false;
+                foreach (string format in new[] { "UnicodeText", "Text", "System.String" })
+                {
+                    if (!formats.Contains(format)) continue;
+                    string text = data.GetData(format) as string;
+                    if (!string.IsNullOrWhiteSpace(text) && !string.Equals(text.Trim(), files[0], StringComparison.OrdinalIgnoreCase)) return false;
+                }
                 imageFile = files[0]; return true;
             }
             if (formats.Contains("Rich Text Format") || !formats.Contains("HTML Format") || !HasImage(formats)) return false;
@@ -755,8 +921,10 @@ namespace ScreenLine
 
         public void Remove(CaptureItem item)
         {
+            int index = Items.IndexOf(item);
+            if (index < 0) return;
             Items.Remove(item);
-            Save();
+            try { Save(); } catch { Items.Insert(index, item); Store.State.Images = Items.Select(i => i.Path).ToList(); throw; }
             Notify();
         }
 
@@ -772,8 +940,9 @@ namespace ScreenLine
 
         public void Clear()
         {
+            var before = Items.ToArray();
             Items.Clear();
-            Save();
+            try { Save(); } catch { Items.AddRange(before); Store.State.Images = Items.Select(i => i.Path).ToList(); throw; }
             Notify();
         }
 
@@ -796,22 +965,7 @@ namespace ScreenLine
 
         public CaptureItem Replace(CaptureItem item, string path)
         {
-            int hanging = Items.IndexOf(item), collected = Collected.IndexOf(item);
-            if (collected < 0) return null;
-            var copy = new CaptureItem(path, item.Image);
-            if (hanging >= 0) Items[hanging] = copy;
-            Collected[collected] = copy;
-            try { Save(); }
-            catch
-            {
-                if (hanging >= 0) Items[hanging] = item;
-                Collected[collected] = item;
-                Store.State.Images = Items.Select(i => i.Path).ToList();
-                Store.State.Collection = Collected.Select(i => i.Path).ToList();
-                throw;
-            }
-            Notify();
-            return copy;
+            return ReplaceImage(item, path, item.Image);
         }
 
         // 用新图片顶替同一条记录，位置保持不变：截图工具标注过程中的中间版本不应该在绳子上留下一串副本。
@@ -822,9 +976,12 @@ namespace ScreenLine
             var copy = new CaptureItem(path, image);
             if (hanging >= 0) Items[hanging] = copy;
             Collected[collected] = copy;
+            var offsets = new Dictionary<string, double>(Store.State.CardOffsets);
+            double offset; if (Store.State.CardOffsets.TryGetValue(item.Path, out offset)) { Store.State.CardOffsets.Remove(item.Path); Store.State.CardOffsets[path] = offset; }
             try { Save(); }
             catch
             {
+                Store.State.CardOffsets = offsets;
                 if (hanging >= 0) Items[hanging] = item;
                 Collected[collected] = item;
                 Store.State.Images = Items.Select(i => i.Path).ToList();
@@ -853,13 +1010,15 @@ namespace ScreenLine
             DateTime deadline = DateTime.UtcNow.AddDays(-days);
             var stale = Collected.Where(item => Stamp(item) < deadline).ToArray();
             if (stale.Length == 0) return 0;
-            var removed = new HashSet<CaptureItem>(stale);
+            var removed = new HashSet<CaptureItem>();
             foreach (var item in stale)
             {
-                if (!FileRules.IsInside(item.Path, Store.Inbox)) continue;
+                if (!FileRules.IsInside(item.Path, Store.Inbox)) { removed.Add(item); continue; }
                 try
                 {
+                    FileRules.AssertPlainTree(item.Path, Store.Root);
                     if (File.Exists(item.Path)) FileSystem.DeleteFile(item.Path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin, UICancelOption.DoNothing);
+                    if (!File.Exists(item.Path)) removed.Add(item);
                 }
                 catch (Exception error) { Store.Log(error); }
             }
@@ -867,7 +1026,7 @@ namespace ScreenLine
             Collected.RemoveAll(item => removed.Contains(item));
             Save();
             Notify();
-            return stale.Length;
+            return removed.Count;
         }
 
         // 判断「新旧」优先看文件当前的修改时间：截图被标注、被替换过之后记录里的旧时间不再准确。

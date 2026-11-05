@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -18,7 +18,7 @@ namespace ScreenLine
     {
         static readonly Style actionStyle = (Style)XamlReader.Parse(LightTheme.Sheet(@"
 <Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='Button'>
-  <Setter Property='Background' Value='Transparent'/><Setter Property='Height' Value='32'/><Setter Property='Padding' Value='10,0'/>
+  <Setter Property='Background' Value='Transparent'/><Setter Property='Height' Value='27'/><Setter Property='Padding' Value='10,0'/>
   <Setter Property='Cursor' Value='Hand'/><Setter Property='FocusVisualStyle' Value='{x:Null}'/>
   <Setter Property='Template'><Setter.Value><ControlTemplate TargetType='Button'>
     <Border x:Name='Surface' Background='{TemplateBinding Background}' CornerRadius='7' BorderBrush='Transparent' BorderThickness='1'>
@@ -36,7 +36,7 @@ namespace ScreenLine
         // 往 Menu.Items 里塞 Button 会被 MenuBase 自动包一层「系统默认 MenuItem」，
         // 键盘选中时画出 Aero2 系统蓝高亮，包装层自带内边距还会把行距和图标位置带偏
         // ——这就是「图标不对齐、选中态不统一」的根源。
-        // 四行共用同一套模板：同一图标画法（Path 18×18）、同一内边距、同一悬停底色；
+        // 四行共用同一套模板：同一图标画法（Path 16×16）、同一内边距、同一悬停底色；
         // 批量行只是多了箭头列和 Popup。
         static readonly string stackIcon = "M12,3 L21,8 L12,13 L3,8 Z M3,12 L12,17 L21,12 M3,16 L12,21 L21,16";
         static readonly Style rowStyle = RowStyle("#283343", "#DFE6EE", LightMenu.IconGeometry("clear").ToString(), false, null);
@@ -46,7 +46,7 @@ namespace ScreenLine
         static readonly Style bulkActionStyle = BulkRowStyle("#283343", "#DFE6EE");
         static readonly Style trashBulkActionStyle = BulkRowStyle("#BB514E", "#FFF0ED");
 
-        // 宿主行模板：图标 18×18 + 文字 +（批量行才有的）箭头列；悬停/键盘选中同一种底色。
+        // 宿主行模板：图标 16×16 + 文字 +（批量行才有的）箭头列；悬停/键盘选中同一种底色。
         static Style RowStyle(string text, string hover, string iconData, bool submenu, string arrow)
         {
             string chevron = submenu
@@ -54,7 +54,7 @@ namespace ScreenLine
                 : "";
             string popup = submenu
                 ? "<Popup x:Name='PART_Popup' Placement='Right' AllowsTransparency='True' Focusable='False' IsOpen='{TemplateBinding IsSubmenuOpen}'>" +
-                  "<Border Width='180' Padding='4' Background='#FFFFFF' BorderBrush='#E0E4EA' BorderThickness='1' CornerRadius='9'>" +
+                  "<Border Width='148' Padding='4' Background='#FFFFFF' BorderBrush='#E0E4EA' BorderThickness='1' CornerRadius='9'>" +
                   "<StackPanel IsItemsHost='True' KeyboardNavigation.DirectionalNavigation='Cycle'/></Border></Popup>"
                 : "";
             string xaml = @"
@@ -62,9 +62,9 @@ namespace ScreenLine
   <Setter Property='Foreground' Value='__TEXT__'/><Setter Property='Cursor' Value='Hand'/><Setter Property='FocusVisualStyle' Value='{x:Null}'/>
   <Setter Property='Template'><Setter.Value><ControlTemplate TargetType='MenuItem'>
     <Grid>
-      <Border x:Name='Row' Height='32' Padding='10,0' CornerRadius='7' Background='Transparent'>
-        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width='18'/><ColumnDefinition Width='*'/><ColumnDefinition Width='12'/></Grid.ColumnDefinitions>
-          <Path Data='__ICON__' Stroke='__TEXT__' StrokeThickness='1.65' StrokeStartLineCap='Round' StrokeEndLineCap='Round' StrokeLineJoin='Round' Width='18' Height='18' Stretch='Uniform'/>
+      <Border x:Name='Row' Height='27' Padding='10,0' CornerRadius='7' Background='Transparent'>
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width='16'/><ColumnDefinition Width='*'/><ColumnDefinition Width='12'/></Grid.ColumnDefinitions>
+          <Path Data='__ICON__' Stroke='__TEXT__' StrokeThickness='1.65' StrokeStartLineCap='Round' StrokeEndLineCap='Round' StrokeLineJoin='Round' Width='16' Height='16' Stretch='Uniform'/>
           <ContentPresenter Grid.Column='1' ContentSource='Header' Margin='10,0,0,0' VerticalAlignment='Center'/>
           __CHEVRON__
         </Grid>
@@ -88,7 +88,7 @@ namespace ScreenLine
 <Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='MenuItem'>
   <Setter Property='Foreground' Value='__TEXT__'/><Setter Property='Cursor' Value='Hand'/><Setter Property='FocusVisualStyle' Value='{x:Null}'/>
   <Setter Property='Template'><Setter.Value><ControlTemplate TargetType='MenuItem'>
-    <Border x:Name='Row' Height='32' Padding='12,0' CornerRadius='7' Background='Transparent'>
+    <Border x:Name='Row' Height='27' Padding='12,0' CornerRadius='7' Background='Transparent'>
       <ContentPresenter ContentSource='Header' VerticalAlignment='Center'/>
     </Border>
     <ControlTemplate.Triggers>
@@ -114,14 +114,14 @@ namespace ScreenLine
 
         internal ImageMenu(Action<ShotAction> execute, bool managed)
         {
-            Width = 220; FontFamily = LightTheme.UiFont; FontSize = 12;
+            Width = 190; FontFamily = new FontFamily("Microsoft YaHei"); FontSize = 11;
             Foreground = LightTheme.Brush("#283343"); HasDropShadow = false; SnapsToDevicePixels = true;
             TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
             LightTheme.SoftwareRenderMenu(this);
             var panel = new StackPanel();
             KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Cycle);
             KeyboardNavigation.SetDirectionalNavigation(panel, KeyboardNavigationMode.Cycle);
-            var heading = new Grid { Margin = new Thickness(10, 5, 10, 7) };
+            var heading = new Grid { Margin = new Thickness(10, 3, 10, 5) };
             heading.Children.Add(new TextBlock { Text = "图片", FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = LightTheme.Brush("#536172") });
             details = new TextBlock { FontSize = 11, Foreground = LightTheme.Brush("#65717F"), HorizontalAlignment = HorizontalAlignment.Right };
             heading.Children.Add(details); panel.Children.Add(heading);
@@ -138,7 +138,7 @@ namespace ScreenLine
                 new KeyValuePair<ShotAction, string>(ShotAction.RemoveRight, "右侧全部"),
                 new KeyValuePair<ShotAction, string>(ShotAction.RemoveOthers, "仅保留这一张"),
                 new KeyValuePair<ShotAction, string>(ShotAction.RemoveAll, "全部") });
-            trashRow = PlainRow(managed ? "移到回收站" : "移除记录（保留原图）", ShotAction.Trash, trashRowStyle, execute);
+            trashRow = PlainRow(managed ? "移到回收站" : "移除记录", ShotAction.Trash, trashRowStyle, execute);
             // 批量删除只给收集文件夹里的副本：外部原图的「删除」其实是移除记录，批量做没有意义。
             if (managed)
                 BulkTrash = Bulk("批量移到回收站", trashBulkStyle, trashBulkActionStyle, delegate(bool value) { trashByMouse = value; }, execute, new[] {
@@ -154,7 +154,7 @@ namespace ScreenLine
             Template = new ControlTemplate(typeof(ContextMenu)) { VisualTree = content };
             PreviewKeyDown += delegate(object sender, KeyEventArgs args)
             {
-                if (args.Key == Key.Escape) { IsOpen = false; args.Handled = true; }
+                if (args.Key == Key.Escape) { CloseMenu(); args.Handled = true; }
                 else if (args.OriginalSource == this && (args.Key == Key.Down || args.Key == Key.Up || args.Key == Key.Tab))
                 {
                     bool previous = args.Key == Key.Up || (args.Key == Key.Tab && (Keyboard.Modifiers & ModifierKeys.Shift) != 0);
@@ -169,6 +169,7 @@ namespace ScreenLine
                     args.Handled = true;
                 }
             };
+            new MenuDismissal(this, OverSubmenu, CloseMenu);
             Opened += delegate { Focus(); watch.Start(); };
             Closed += delegate
             {
@@ -189,18 +190,37 @@ namespace ScreenLine
             };
         }
 
+        internal void CloseMenu()
+        {
+            BulkMenu.IsSubmenuOpen = false;
+            if (BulkTrash != null) BulkTrash.IsSubmenuOpen = false;
+            IsOpen = false;
+        }
+
+        bool OverSubmenu()
+        {
+            var cursor = WindowsNative.Cursor();
+            foreach (var row in new[] { BulkMenu, BulkTrash })
+            {
+                if (row == null || !row.IsSubmenuOpen || row.Template == null) continue;
+                var popup = row.Template.FindName("PART_Popup", row) as Popup;
+                if (popup != null && popup.IsOpen && MenuDismissal.Contains(popup.Child as FrameworkElement, cursor)) return true;
+            }
+            return false;
+        }
+
         // 宿主里的单动作行（放进篮子 / 移到回收站）：与批量行同一套 MenuItem 模板，
         // 只是没有箭头和子菜单；悬停与键盘选中都走 Tag='hover' 触发器。
         MenuItem PlainRow(string title, ShotAction action, Style style, Action<ShotAction> execute)
         {
             var row = new MenuItem { Header = title, Style = style, FontFamily = FontFamily, FontSize = FontSize };
             AutomationProperties.SetName(row, title);
-            row.Click += delegate { IsOpen = false; execute(action); };
+            row.Click += delegate { CloseMenu(); execute(action); };
             row.GotKeyboardFocus += delegate { row.Tag = "hover"; };
             row.LostKeyboardFocus += delegate { row.Tag = null; };
             row.PreviewKeyDown += delegate(object sender, KeyEventArgs args)
             {
-                if (args.Key == Key.Enter || args.Key == Key.Space) { IsOpen = false; execute(action); args.Handled = true; }
+                if (args.Key == Key.Enter || args.Key == Key.Space) { CloseMenu(); execute(action); args.Handled = true; }
             };
             return row;
         }
@@ -237,7 +257,7 @@ namespace ScreenLine
             {
                 ShotAction action = entry.Key;
                 var child = new MenuItem { Header = entry.Value, Style = rowStyle };
-                child.Click += delegate { IsOpen = false; execute(action); };
+                child.Click += delegate { CloseMenu(); execute(action); };
                 // 子菜单的自动收起不靠 MouseLeave + 定时器：置灰的 MenuItem 不参与命中
                 // 测试，鼠标经过它时 MouseEnter 收不到，上一项的离开计时器照样跑完，
                 // 子菜单会在光标还停在弹层里时自己收掉。统一交给 watch 轮询里的 Poll()——
@@ -339,16 +359,16 @@ namespace ScreenLine
         {
             var color = LightTheme.Brush("#283343");
             var label = new StackPanel { Orientation = Orientation.Horizontal };
-            // 图标用与宿主行完全相同的画法（Path 18×18 Stretch=Uniform），保证所有行的
+            // 图标用与宿主行完全相同的画法（Path 16×16 Stretch=Uniform），保证所有行的
             // 图标大小、粗细、位置像素级一致；Viewbox 会把描边也算进缩放，图标明显偏小。
-            label.Children.Add(new Path { Data = LightMenu.IconGeometry(icon), Stroke = color, StrokeThickness = 1.65, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round, Width = 18, Height = 18, Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center });
+            label.Children.Add(new Path { Data = LightMenu.IconGeometry(icon), Stroke = color, StrokeThickness = 1.65, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round, Width = 16, Height = 16, Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center });
             label.Children.Add(new TextBlock { Text = title, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
             var button = new Button {
                 Content = label, Style = actionStyle, Foreground = color,
                 HorizontalAlignment = HorizontalAlignment.Stretch
             };
             AutomationProperties.SetName(button, title);
-            button.Click += delegate { IsOpen = false; execute(action); };
+            button.Click += delegate { CloseMenu(); execute(action); };
             Actions.Add(action, button); return button;
         }
 

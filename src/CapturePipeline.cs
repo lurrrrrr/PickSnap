@@ -23,6 +23,7 @@ namespace ScreenLine
         readonly string folder;
         readonly CaptureReceipts receipts = new CaptureReceipts();
         readonly Dictionary<string, int> pending = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        readonly Dictionary<string, DateTime> fileDue = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
         readonly HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         readonly HashSet<string> processing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         readonly DispatcherTimer timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
@@ -40,6 +41,7 @@ namespace ScreenLine
         string clipboardLastFingerprint;
         DateTime clipboardLastCommitAt = DateTime.MinValue;
         ImageContent clipboardStaged;
+        CaptureItem clipboardStagedTarget;
         byte[] clipboardStagedBytes;
         string clipboardStagedExtension;
         DateTime clipboardStagedAt = DateTime.MinValue;
@@ -66,21 +68,12 @@ namespace ScreenLine
             get { return gallery.Store.State.CollectClipboard; }
             set
             {
-                gallery.Store.State.CollectClipboard = value;
-                gallery.Store.Save();
+                bool previous = gallery.Store.State.CollectClipboard, previousFolder = gallery.Store.State.CollectScreenshotFiles;
+                gallery.Store.State.CollectClipboard = gallery.Store.State.CollectScreenshotFiles = value;
+                try { gallery.Store.Save(); } catch { gallery.Store.State.CollectClipboard = previous; gallery.Store.State.CollectScreenshotFiles = previousFolder; throw; }
                 clipboardSequence = WindowsNative.GetClipboardSequenceNumber();
                 clipboardDue = DateTime.MaxValue;
-                gallery.Notify();
-            }
-        }
-
-        public bool AutoHang
-        {
-            get { return gallery.Store.State.AutoHang; }
-            set
-            {
-                gallery.Store.State.AutoHang = value;
-                gallery.Store.Save();
+                if (!value) { clipboardStaged = null; clipboardStagedBytes = null; pending.Clear(); fileDue.Clear(); }
                 gallery.Notify();
             }
         }
@@ -93,8 +86,7 @@ namespace ScreenLine
 
         public async Task Start()
         {
-            AttachWatcher();
-            timer.Start();
+            AttachWatcher(); timer.Start();
             var saved = gallery.Store.State.Images.ToArray();
             var collected = saved.Concat(gallery.Store.State.Collection);
             if (Directory.Exists(gallery.Store.Inbox))
@@ -134,8 +126,8 @@ namespace ScreenLine
 
         void Queue(string path)
         {
-            if (!FileRules.IsImage(path) || disposed) { return; }
-            dispatcher.BeginInvoke(new Action(delegate { if (!disposed && !seen.Contains(path)) { pending[path] = 0; } }));
+            if (!FileRules.IsImage(path) || disposed || !CollectClipboard) { return; }
+            dispatcher.BeginInvoke(new Action(delegate { if (!disposed && !seen.Contains(path)) { pending[path] = 0; fileDue[path] = DateTime.UtcNow.AddMilliseconds(600); } }));
         }
 
         public void ClipboardChanged()
@@ -150,16 +142,20 @@ namespace ScreenLine
 
         async void Tick(object sender, EventArgs args)
         {
+            if (!CollectClipboard) { pending.Clear(); fileDue.Clear(); }
             AttachWatcher();
             foreach (var candidate in pending.ToArray())
-                if (!processing.Contains(candidate.Key)) ProcessFile(candidate.Key);
+                if (!processing.Contains(candidate.Key) && (!fileDue.ContainsKey(candidate.Key) || DateTime.UtcNow >= fileDue[candidate.Key])) ProcessFile(candidate.Key);
             if (!clipboardBusy && DateTime.UtcNow >= clipboardDue)
             {
                 clipboardDue = DateTime.MaxValue;
                 ReadClipboard();
             }
             if (!clipboardBusy && clipboardStaged != null && ClipboardReady())
-                await CommitStagedClipboard();
+            {
+                clipboardBusy = true;
+                try { await CommitStagedClipboard(); } finally { clipboardBusy = false; }
+            }
             if (++ticks % 10 == 0)
             {
                 gallery.Prune();
@@ -174,8 +170,8 @@ namespace ScreenLine
             bool complete = await Import(path, CaptureSource.Folder, true);
             processing.Remove(path);
             if (disposed) return;
-            if (complete) { seen.Add(path); pending.Remove(path); }
-            else if (pending.ContainsKey(path) && ++pending[path] >= 20) pending.Remove(path);
+            if (complete) { seen.Add(path); pending.Remove(path); fileDue.Remove(path); }
+            else if (pending.ContainsKey(path) && ++pending[path] >= 20) { pending.Remove(path); fileDue.Remove(path); }
         }
 
         public async Task<bool> Import(string path, CaptureSource? source, bool announce)
@@ -186,22 +182,24 @@ namespace ScreenLine
             {
                 ImageContent image = await Task.Run(() => ImageContent.Read(path));
                 if (disposed) return false;
-                if (source.HasValue && !receipts.Accept(image.Fingerprint, source.Value, DateTime.UtcNow)) { return true; }
-                if (!source.HasValue && !FileRules.IsInside(path, gallery.Store.Inbox))
+                if (source == CaptureSource.Folder && !CollectClipboard) return false;
+                if (source.HasValue && !receipts.Accept(image.Fingerprint, source.Value, DateTime.UtcNow))
+                {
+                    if (source == CaptureSource.Folder) LinkClipboardCandidate(image.Fingerprint);
+                    return true;
+                }
+                if (!FileRules.IsInside(path, gallery.Store.Inbox))
                 {
                     copy = await Task.Run(() => CopyToInbox(path));
-                    if (disposed) return false;
+                    if (disposed || source.HasValue && !CollectClipboard) return false;
                     path = copy;
                 }
-                if (source.HasValue && !AutoHang) gallery.Collect(path, image);
-                else
+                gallery.Add(path, image);
+                if (source == CaptureSource.Folder) LinkClipboardCandidate(image.Fingerprint);
+                if (announce && Arrived != null)
                 {
-                    gallery.Add(path, image);
-                    if (announce && Arrived != null)
-                    {
-                        var cursor = WindowsNative.Cursor();
-                        Arrived(gallery.Items[gallery.Items.Count - 1], source.HasValue ? new Point?(new Point(cursor.X, cursor.Y)) : null);
-                    }
+                    var cursor = WindowsNative.Cursor();
+                    Arrived(gallery.Items[gallery.Items.Count - 1], source.HasValue ? new Point?(new Point(cursor.X, cursor.Y)) : null);
                 }
                 return true;
             }
@@ -241,8 +239,7 @@ namespace ScreenLine
             await Task.Run(() => File.WriteAllBytes(path, png));
             if (disposed) return path;
             receipts.Accept(image.Fingerprint, CaptureSource.Clipboard, DateTime.UtcNow);
-            if (AutoHang) { gallery.Add(path, image); if (Arrived != null) Arrived(gallery.Items.Last(), null); }
-            else gallery.Collect(path, image);
+            gallery.Add(path, image); if (Arrived != null) Arrived(gallery.Items.Last(), null);
             var data = new DataObject(); data.SetImage(picture); data.SetData("PNG", new MemoryStream(png)); data.SetData(ClipboardRules.OwnFormat, "1");
             data.SetFileDropList(new System.Collections.Specialized.StringCollection { path });
             await WindowsClipboard.Write(data); IgnoreCurrentClipboard();
@@ -282,12 +279,17 @@ namespace ScreenLine
                 string owner = WindowsNative.ClipboardOwnerName() ?? string.Empty;
                 ImageContent content = await Task.Run(() => ImageContent.Decode(picture.Bytes));
                 if (disposed || !CollectClipboard || WindowsNative.GetClipboardSequenceNumber() != sequence) return;
-                if (!receipts.Accept(content.Fingerprint, CaptureSource.Clipboard, DateTime.UtcNow, ClipboardRepeat)) { return; }
+                if (!receipts.Accept(content.Fingerprint, CaptureSource.Clipboard, DateTime.UtcNow, ClipboardRepeat))
+                {
+                    if (IsCaptureTool(owner)) LinkClipboardCandidate(content.Fingerprint);
+                    return;
+                }
                 if (content.Fingerprint != null && content.Fingerprint == clipboardLastFingerprint && DateTime.UtcNow - clipboardLastCommitAt < TimeSpan.FromSeconds(60))
                 {
                     return;
                 }
                 bool staged = false;
+                if (clipboardStaged != null && clipboardStagedTarget != clipboardPending) await CommitStagedClipboard();
                 try { staged = StageEditedClipboard(picture, content, owner); }
                 catch (Exception error) { gallery.Store.Log(error); }
                 if (staged) return;
@@ -297,14 +299,9 @@ namespace ScreenLine
                 string path = Path.Combine(gallery.Store.Inbox, "截图_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + "_" + Guid.NewGuid().ToString("N").Substring(0, 8) + picture.Extension);
                 await Task.Run(() => File.WriteAllBytes(path, picture.Bytes));
                 if (disposed || !CollectClipboard || WindowsNative.GetClipboardSequenceNumber() != sequence) { File.Delete(path); return; }
-                CaptureItem added;
-                if (!AutoHang) added = gallery.Collect(path, content);
-                else
-                {
-                    gallery.Add(path, content);
-                    added = gallery.Items[gallery.Items.Count - 1];
-                    if (Arrived != null) Arrived(added, origin);
-                }
+                gallery.Add(path, content);
+                CaptureItem added = gallery.Items[gallery.Items.Count - 1];
+                if (Arrived != null) Arrived(added, origin);
                 clipboardPending = added;
                 clipboardLastFingerprint = content.Fingerprint;
                 clipboardLastCommitAt = DateTime.UtcNow;
@@ -381,11 +378,18 @@ namespace ScreenLine
 
         // 截图工具的编辑器里每改一笔都会重写剪贴板，但从剪贴板分不清是自动写入还是用户点了「复制」。
         // 因此与绳上那张同尺寸、画面又相近的新版本只暂存在内存里，等剪贴板安静下来（用户改完、复制完毕）再落盘覆盖。
-        bool StageEditedClipboard(ClipboardPicture picture, ImageContent content, string owner)
+        internal void LinkClipboardCandidate(string fingerprint)
+        {
+            var candidate = gallery.Collected.LastOrDefault(item => item.Image.Fingerprint == fingerprint && File.Exists(item.Path));
+            if (candidate == null) return;
+            clipboardPending = candidate; clipboardLastCommitAt = DateTime.UtcNow; clipboardLastFingerprint = fingerprint;
+        }
+
+        internal bool StageEditedClipboard(ClipboardPicture picture, ImageContent content, string owner)
         {
             CaptureItem pending = clipboardPending;
             // 你把绳上那张删了（或它被替换掉）时，指针会失效；退回绳上/篮子里最新的那张，别让后续修改无处可落。
-            if (pending == null || !File.Exists(pending.Path))
+            if (pending == null || !gallery.Collected.Contains(pending) || !File.Exists(pending.Path))
             {
                 pending = gallery.Items.LastOrDefault(item => File.Exists(item.Path)) ?? gallery.Collected.LastOrDefault(item => File.Exists(item.Path));
                 clipboardPending = pending;
@@ -410,6 +414,7 @@ namespace ScreenLine
             }
             if (difference > ClipboardEditTolerance) { return false; }
             clipboardStaged = content;
+            clipboardStagedTarget = pending;
             clipboardStagedBytes = picture.Bytes;
             clipboardStagedExtension = picture.Extension;
             clipboardStagedAt = DateTime.UtcNow;
@@ -417,13 +422,13 @@ namespace ScreenLine
         }
 
         // 把暂存的修改版本写成文件，顶替绳上（或篮子里）那张原图，位置保持不变。
-        async Task CommitStagedClipboard()
+        internal async Task CommitStagedClipboard()
         {
-            CaptureItem pending = clipboardPending;
+            CaptureItem pending = clipboardStagedTarget ?? clipboardPending;
             ImageContent staged = clipboardStaged;
             byte[] bytes = clipboardStagedBytes;
             string extension = clipboardStagedExtension;
-            clipboardStaged = null; clipboardStagedBytes = null; clipboardStagedExtension = null;
+            clipboardStaged = null; clipboardStagedTarget = null; clipboardStagedBytes = null; clipboardStagedExtension = null;
             if (pending == null || staged == null || bytes == null || disposed) return;
             if (!File.Exists(pending.Path)) { clipboardPending = null; return; }
             try
@@ -431,16 +436,21 @@ namespace ScreenLine
                 Directory.CreateDirectory(gallery.Store.Inbox);
                 string path = Path.Combine(gallery.Store.Inbox, "截图_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + "_" + Guid.NewGuid().ToString("N").Substring(0, 8) + extension);
                 await Task.Run(() => File.WriteAllBytes(path, bytes));
-                if (disposed) return;
+                if (disposed || !CollectClipboard) { File.Delete(path); return; }
                 string replaced = pending.Path;
                 CaptureItem current = gallery.ReplaceImage(pending, path, staged);
                 if (current == null) { if (File.Exists(path)) File.Delete(path); return; }
-                clipboardPending = current;
-                clipboardLastFingerprint = staged.Fingerprint;
-                clipboardLastCommitAt = DateTime.UtcNow;
-                if (!FileRules.SameFile(replaced, path))
+                if (clipboardPending == pending)
                 {
-                    try { File.Delete(replaced); }
+                    clipboardPending = current;
+                    clipboardLastFingerprint = staged.Fingerprint;
+                    clipboardLastCommitAt = DateTime.UtcNow;
+                }
+                // 文件夹监听可能直接引用 Windows 截图原件；只有收集目录里的旧副本归我们清理。
+                // 标注版本另存到 Inbox 不代表外部原件也能删除。
+                if (FileRules.IsInside(replaced, gallery.Store.Inbox) && !FileRules.SameFile(replaced, path))
+                {
+                    try { FileRules.AssertPlainTree(replaced, gallery.Store.Root); File.Delete(replaced); }
                     catch (IOException) { }
                     catch (UnauthorizedAccessException) { }
                 }
