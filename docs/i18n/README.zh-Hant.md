@@ -2,7 +2,7 @@
 
 **把截圖掛在螢幕頂邊，把零散文字收進信封。** 輕量的 Windows 剪貼展示工具，方便複製、拖放和對照。
 
-[下載最新版](https://github.com/lurrrrrr/PickSnap/releases/latest) · [简体中文](../../README.md) · [v2.0.0 更新說明](../../CHANGELOG.md)
+[下載最新版](https://github.com/lurrrrrr/PickSnap/releases/latest) · [简体中文](../../README.md)
 
 ## 自由擺放與橫向瀏覽
 

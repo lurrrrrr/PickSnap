@@ -2,7 +2,7 @@
 
 **Keep screenshots on a clothesline at the top of your Windows desktop. Save copied text in an envelope.**
 
-[Download](https://github.com/lurrrrrr/PickSnap/releases/latest) · [简体中文](../../README.md) · [v2.0.0 changes](../../CHANGELOG.md)
+[Download](https://github.com/lurrrrrr/PickSnap/releases/latest) · [简体中文](../../README.md)
 
 ## Free placement and horizontal scrolling
 

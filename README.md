@@ -3,8 +3,7 @@
 <p align="center"><strong>把截图挂在屏幕顶边，把零散的文字收进信封。</strong><br>一个轻量的 Windows 剪贴展示工具，用来随手复制、拖放和对照。</p>
 <p align="center">
   <a href="https://github.com/lurrrrrr/PickSnap/releases/latest">下载最新版</a> ·
-  <a href="#快速开始">快速开始</a> ·
-  <a href="CHANGELOG.md">v2.0.0 更新说明</a>
+  <a href="#快速开始">快速开始</a>
 </p>
 <p align="center">简体中文 · <a href="docs/i18n/README.en.md">English</a> · <a href="docs/i18n/README.zh-Hant.md">繁體中文</a> · <a href="docs/i18n/README.ja.md">日本語</a></p>
 <p align="center">

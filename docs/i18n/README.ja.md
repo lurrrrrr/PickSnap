@@ -2,7 +2,7 @@
 
 **スクリーンショットを画面上端のロープに。コピーしたテキストを封筒に。** Windows 用の軽量なクリップ表示ツールです。
 
-[ダウンロード](https://github.com/lurrrrrr/PickSnap/releases/latest) · [简体中文](../../README.md) · [v2.0.0 の変更点](../../CHANGELOG.md)
+[ダウンロード](https://github.com/lurrrrrr/PickSnap/releases/latest) · [简体中文](../../README.md)
 
 ## 自由な配置と横スクロール
 
