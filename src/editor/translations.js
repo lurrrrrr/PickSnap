@@ -13,7 +13,7 @@ window.editorTranslations = {
   resizeWidthTitle:'宽度（像素）',resizeHeightTitle:'高度（像素）',toggleRatioLockTitle:'锁定宽高比',resetSize:'恢复原始尺寸',rotateTool:'旋转',
   textTool:'文字',textSpacings:'文字间距',textAlignment:'文字对齐',fontFamily:'字体',size:'字号',letterSpacing:'字间距',lineHeight:'行距',warmthTool:'色温',
   addWatermark:'+ 添加水印',addTextWatermark:'+ 添加文字水印',addWatermarkTitle:'选择水印类型',uploadWatermark:'选择水印图片',addWatermarkAsText:'文字水印',
-  padding:'边距',paddings:'边距',shadow:'阴影',horizontal:'水平',vertical:'垂直',blur:'模糊',opacity:'不透明度',transparency:'透明度',position:'位置',stroke:'描边',
+  padding:'边距',paddings:'边距',shadow:'阴影',horizontal:'水平',vertical:'垂直',blur:'模糊',opacity:'透明度',transparency:'透明度',position:'位置',stroke:'描边',
   saveAsModalTitle:'另存为',extension:'扩展名',format:'格式',nameIsRequired:'请输入名称。',quality:'质量',imageDimensionsHoverTitle:'导出尺寸（宽 × 高）',
   cropSizeLowerThanResizedWarning:'裁剪区域小于调整后的尺寸，放大可能影响清晰度。',actualSize:'原始大小（100%）',fitSize:'适合窗口',
   addImageTitle:'选择要添加的图片…',mutualizedFailedToLoadImg:'无法读取图片。',tabsMenu:'工具',download:'保存',width:'宽度',height:'高度',plus:'+',cropItemNoEffect:'此比例暂无预览',

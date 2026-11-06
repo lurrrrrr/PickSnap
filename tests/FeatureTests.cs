@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -27,10 +28,29 @@ namespace ScreenLine
                 try { Temporary(root => AppUpdates.Extract(args[1], Path.Combine(root, "package"), AppUpdates.CurrentVersion)); Console.WriteLine("PASS: Actual release archive passes the application's updater validation"); return 0; }
                 catch (Exception error) { Console.WriteLine(error); return 1; }
             }
+            if (args.Length == 4 && args[0] == "--verify-screenshot-pair") {
+                try {
+                    byte[] original = File.ReadAllBytes(args[1]), edited = File.ReadAllBytes(args[2]), corrupt = File.ReadAllBytes(args[3]);
+                    ClipboardTransfer.ValidateEncoded(original, ".png"); ClipboardTransfer.ValidateEncoded(edited, ".png");
+                    bool rejected = false; try { ClipboardTransfer.ValidateEncoded(corrupt, ".png"); } catch (InvalidDataException) { rejected = true; }
+                    Check(rejected, "damaged sample accepted");
+                    var left = ImageContent.Decode(original); var right = ImageContent.Decode(edited);
+                    double difference = ImageContent.DifferenceAcrossSizes(args[1], left.PixelWidth, edited, right.PixelWidth);
+                    Check(difference <= 0.35, "valid edit does not match original: " + difference);
+                    Console.WriteLine("PASS: Damaged sample rejected; valid edit difference=" + difference); return 0;
+                } catch (Exception error) { Console.WriteLine(error); return 1; }
+            }
             render = args.Contains("--render");
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
             LightTheme.UseDark(args.Contains("--dark")); LightTheme.Install(app);
+            if (args.Contains("--clipboard-only")) {
+                Run("Unsupported encoded medium falls back to bitmap", ClipboardMediumFallback);
+                Run("Ordinary clipboard formats still work", ClipboardFormats);
+                Run("Screenshot edits replace the correct card", ScreenshotEditTarget);
+                app.Shutdown(); Console.WriteLine(count + " clipboard checks: " + (count - failures) + " passed, " + failures + " failed."); return failures == 0 ? 0 : 1;
+            }
+            Run("Unsupported encoded medium falls back to bitmap", ClipboardMediumFallback);
             if (args.Contains("--demos")) { DemoRecorder.Run(); app.Shutdown(); return 0; }
             if (args.Contains("--ui-only"))
             {
@@ -165,6 +185,86 @@ namespace ScreenLine
                 foreach (var reader in Application.Current.Windows.OfType<TextReaderWindow>().ToArray()) reader.Close(); shelf.Close();
             });
         }
+        sealed class BrokenPngData : IDataObject
+        {
+            internal bool Alternative;
+            internal bool Corrupt;
+            public object GetData(string format, bool convert) {
+                if (format == "PNG" && Corrupt) { byte[] bytes = Png(); bytes[29] ^= 1; return bytes; }
+                if (format == "PNG") throw new System.Runtime.InteropServices.COMException("invalid tymed", unchecked((int)0x800401D3));
+                if (format == "image/png" && Alternative) return new MemoryStream(Png());
+                if (format == DataFormats.Bitmap) return ImageContent.Decode(Png()).Thumbnail;
+                return null;
+            }
+            public object GetData(string format) { return GetData(format, true); }
+            public object GetData(Type type) { return null; }
+            public bool GetDataPresent(string format, bool convert) { return GetFormats().Contains(format); }
+            public bool GetDataPresent(string format) { return GetDataPresent(format, true); }
+            public bool GetDataPresent(Type type) { return false; }
+            public string[] GetFormats() { return Alternative ? new[] { "PNG", "image/png", DataFormats.Bitmap } : new[] { "PNG", DataFormats.Bitmap }; }
+            public string[] GetFormats(bool convert) { return GetFormats(); }
+            public void SetData(string format, object data, bool convert) { throw new NotSupportedException(); }
+            public void SetData(string format, object data) { throw new NotSupportedException(); }
+            public void SetData(Type type, object data) { throw new NotSupportedException(); }
+            public void SetData(object data) { throw new NotSupportedException(); }
+        }
+        [System.Runtime.InteropServices.DllImport("ole32.dll")]
+        static extern int CreateStreamOnHGlobal(IntPtr memory, bool delete, out System.Runtime.InteropServices.ComTypes.IStream stream);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern IntPtr GlobalAlloc(uint flags, UIntPtr size);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern IntPtr GlobalLock(IntPtr memory);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern bool GlobalUnlock(IntPtr memory);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern IntPtr GlobalFree(IntPtr memory);
+        static void NativeClipboardMedia()
+        {
+            byte[] expected = Png();
+            IntPtr memory = GlobalAlloc(2, new UIntPtr((uint)expected.Length));
+            Check(memory != IntPtr.Zero, "allocation failed");
+            try {
+                IntPtr address = GlobalLock(memory);
+                System.Runtime.InteropServices.Marshal.Copy(expected, 0, address, expected.Length); GlobalUnlock(memory);
+                var medium = new System.Runtime.InteropServices.ComTypes.STGMEDIUM {
+                    tymed = System.Runtime.InteropServices.ComTypes.TYMED.TYMED_HGLOBAL, unionmember = memory };
+                Check(ClipboardTransfer.ReadMedium(medium).Take(expected.Length).SequenceEqual(expected), "HGLOBAL image corrupted");
+            } finally { GlobalFree(memory); }
+            System.Runtime.InteropServices.ComTypes.IStream stream;
+            System.Runtime.InteropServices.Marshal.ThrowExceptionForHR(CreateStreamOnHGlobal(IntPtr.Zero, true, out stream));
+            IntPtr pointer = IntPtr.Zero;
+            try {
+                stream.Write(expected, expected.Length, IntPtr.Zero);
+                pointer = System.Runtime.InteropServices.Marshal.GetIUnknownForObject(stream);
+                var medium = new System.Runtime.InteropServices.ComTypes.STGMEDIUM {
+                    tymed = System.Runtime.InteropServices.ComTypes.TYMED.TYMED_ISTREAM, unionmember = pointer };
+                Check(ClipboardTransfer.ReadMedium(medium).SequenceEqual(expected), "IStream image corrupted or not rewound");
+            } finally {
+                if (pointer != IntPtr.Zero) System.Runtime.InteropServices.Marshal.Release(pointer);
+                System.Runtime.InteropServices.Marshal.ReleaseComObject(stream);
+            }
+        }
+        static void ClipboardMediumFallback()
+        {
+            NativeClipboardMedia();
+            byte[] valid = Png(); ClipboardTransfer.ValidateEncoded(valid, ".png");
+            byte[] invalid = (byte[])valid.Clone(); invalid[29] ^= 1;
+            bool rejected = false; try { ClipboardTransfer.ValidateEncoded(invalid, ".png"); } catch (InvalidDataException) { rejected = true; }
+            Check(rejected, "invalid PNG checksum accepted");
+            rejected = false; try { ClipboardTransfer.ValidateEncoded(valid.Take(valid.Length - 8).ToArray(), ".png"); } catch (InvalidDataException) { rejected = true; }
+            Check(rejected, "truncated PNG accepted");
+            Check(CapturePipeline.ResolveCaptureSource("svchost", "ScreenSketch") == "ScreenSketch", "local editor evidence was lost");
+            Check(CapturePipeline.ResolveCaptureSource("svchost", null) == "svchost", "remote or unknown broker must not be trusted");
+            Check(CapturePipeline.ResolveCaptureSource("Paint", "ScreenSketch") == "Paint", "unrelated owner was relabeled");
+            foreach (bool corrupt in new[] { false, true })
+            foreach (bool alternative in new[] { false, true }) {
+                int errors = 0;
+                var task = CapturePipeline.ReadImage(new BrokenPngData { Alternative = alternative, Corrupt = corrupt }, "ScreenSketch", error => errors++); Await(task);
+                Check(task.Result != null && task.Result.Extension == ".png" && errors == 1, "bad medium aborted instead of falling back or was not diagnosed");
+                Check(ImageContent.Decode(task.Result.Bytes).PixelWidth > 0, "fallback produced invalid image");
+            }
+        }
+
         static byte[] EditedPng()
         {
             byte[] pixels = Enumerable.Repeat((byte)255, 64 * 40 * 4).ToArray();
@@ -428,7 +528,7 @@ namespace ScreenLine
                     Check(System.Windows.Automation.AutomationProperties.GetName(nav) == SettingsWindow.Pages[0], "navigation category has no accessible name");
                     Check(!Descendants(nav).OfType<System.Windows.Shapes.Path>().Any() && letter.FontSize == 16, "sidebar retained icons or small labels");
                     var actions = buttons.Where(b => b.IsVisible && b.Style == LightTheme.ButtonStyle).ToArray();
-                    Check(actions.Length >= 4 && actions.All(b => Math.Abs(b.ActualWidth - 164) < .01 && Math.Abs(b.ActualHeight - 36) < .01), "settings button sizes differ");
+                    Check(actions.Length >= 4 && actions.All(b => Math.Abs(b.ActualWidth - 200) < .01 && Math.Abs(b.ActualHeight - 36) < .01), "settings button sizes differ");
                     foreach (var action in actions) { var presenter = Descendants(action).OfType<ContentPresenter>().First(); Check(presenter.HorizontalAlignment == HorizontalAlignment.Center && presenter.VerticalAlignment == VerticalAlignment.Center, "button label is not centered"); }
 
                     uint key = 0; for (uint next = 0x7C; next <= 0x87; next++) if (controller.SetToggleShortcut(7, next)) { key = next; break; }
@@ -481,8 +581,20 @@ namespace ScreenLine
             Temporary(root => {
                 var g = new Gallery(new StateStore(root)); var before = Image(g, "before.png", true); var after = Image(g, "after.png");
                 g.Forget(after); g.Store.State.CardOffsets[before.Path] = 167;
-                var replacement = g.ReplaceImage(before, after.Path, after.Image);
-                Check(g.Store.State.CardOffsets[replacement.Path] == 167, "metadata was lost when the path changed");
+                var shelf = new ShelfWindow(g, delegate { }, delegate { }); shelf.Show(); shelf.Update();
+                try {
+                    var cards = (Dictionary<string, ShotCard>)typeof(ShelfWindow).GetField("cards", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(shelf);
+                    var originalCard = cards[before.Path]; double position = originalCard.MountX;
+                    var replacement = g.ReplaceImage(before, after.Path, after.Image);
+                    Check(g.Store.State.CardOffsets[replacement.Path] == 167, "metadata was lost when the path changed");
+                    Check(cards[replacement.Path] == originalCard && originalCard.MountX == position && originalCard.Item == replacement, "replacement rebuilt or moved the clip");
+                    for (int i = 0; i < 12; i++) {
+                        double last = cards.Values.Max(card => card.MountX);
+                        var next = Image(g, "append-" + i, true);
+                        Check(cards[next.Path].MountX > last, "new capture wrapped to the left");
+                        Check(originalCard.MountX == position, "append moved an existing clip");
+                    }
+                } finally { shelf.Close(); }
             });
         }
         static void CompleteArchive()

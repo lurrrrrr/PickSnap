@@ -17,7 +17,7 @@ namespace ScreenLine
         readonly TextBlock feedback = new TextBlock { Text = "", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Foreground = LightTheme.Brush("#65717F") };
         internal string CurrentPage { get; private set; }
         internal static readonly string[] Pages = { "常规与外观", "键盘快捷键", "收集与清理", "更新与卸载" };
-        const double ActionWidth = 164;
+        const double ActionWidth = 200;
         internal TextBlock UpdateStatusText { get; private set; }
         internal Button CheckUpdateButton { get; private set; }
         internal Button ViewUpdateButton { get; private set; }
@@ -32,7 +32,7 @@ namespace ScreenLine
             var screen = WindowsNative.ScreenAtPointer(); double dpi = WindowsNative.MonitorScale(screen);
             Width = Math.Min(900, screen.WorkingArea.Width / dpi - 32); Height = Math.Min(700, screen.WorkingArea.Height / dpi - 32);
             MinWidth = Math.Min(760, Width); MinHeight = Math.Min(420, Height);
-            WindowStartupLocation = WindowStartupLocation.CenterScreen; Topmost = true;
+            WindowStartupLocation = WindowStartupLocation.CenterScreen; Topmost = false;
             LightTheme.Polish(this); System.Windows.Automation.AutomationProperties.SetAutomationId(this, "PickSnapSettings");
             var root = new Grid(); root.RowDefinitions.Add(new RowDefinition()); root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var body = new Grid(); body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(190) }); body.ColumnDefinitions.Add(new ColumnDefinition());
@@ -157,13 +157,24 @@ namespace ScreenLine
             var box = new SwitchBox { IsChecked = read(), VerticalAlignment = VerticalAlignment.Center, Content = "开启", MinHeight = 36, Style = LightTheme.SwitchStyle };
             System.Windows.Automation.AutomationProperties.SetName(box, title);
             bool updating = false;
-            RoutedEventHandler handler = delegate { if (updating) return; Try(() => change(box.IsChecked == true), "已保存"); updating = true; box.IsChecked = read(); updating = false; };
+            RoutedEventHandler handler = delegate { if (updating) return; Try(() => change(box.IsChecked == true), "已保存"); updating = true; box.IsChecked = read(); updating = false; UpdateHoverChoices(); };
             box.Checked += handler; box.Unchecked += handler; Row(title, detail, box);
+        }
+        void UpdateHoverChoices()
+        {
+            foreach (var choice in choices)
+                if ((string)choice.Tag == "顶部触发范围" || (string)choice.Tag == "停留时间") {
+                    choice.IsEnabled = !controller.Gallery.Store.State.NoHoverReveal;
+                    choice.Opacity = choice.IsEnabled ? 1 : 0.5;
+                    choice.ToolTip = choice.IsEnabled ? null : "开启“鼠标移到顶部时展开”后可设置";
+                }
         }
         void Choice(string title, string detail, string[] options, int selected, Action<int> change)
         {
-            var box = new ComboBox { ItemsSource = options, SelectedIndex = selected, Width = title == "顶部触发范围" ? 200 : 164, Height = 36, VerticalContentAlignment = VerticalAlignment.Center, Style = LightTheme.ChoiceStyle };
+            var box = new ComboBox { ItemsSource = options, SelectedIndex = selected, Width = ActionWidth, HorizontalContentAlignment = HorizontalAlignment.Center, Height = 36, VerticalContentAlignment = VerticalAlignment.Center, Style = LightTheme.ChoiceStyle };
+            box.Tag = title;
             choices.Add(box);
+            UpdateHoverChoices();
             System.Windows.Automation.AutomationProperties.SetName(box, title);
             int previous = selected; bool updating = false;
             box.SelectionChanged += delegate { if (updating) return; int next = box.SelectedIndex; try { change(next); previous = next; SetFeedback("已保存"); } catch (Exception error) { updating = true; box.SelectedIndex = previous; updating = false; SetFeedback(error.Message); } };

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -28,22 +28,29 @@ namespace ScreenLine
             finally { readGate.Release(); }
         }
 
-        internal static byte[] ReadEncodedImage(IDataObject data, out string extension)
+        internal static byte[] ReadEncodedImage(IDataObject data, out string extension, Action<Exception> log = null)
         {
             extension = null;
-            object raw = null;
             foreach (var format in ClipboardRules.EncodedFormats)
             {
-                if (!data.GetDataPresent(format.Key, false)) continue;
-                object candidate = data.GetData(format.Key, false);
-                if (!(candidate is byte[]) && !(candidate is Stream)) continue;
-                raw = candidate; extension = format.Value; break;
+                try
+                {
+                    if (!data.GetDataPresent(format.Key, false)) continue;
+                    object raw = data.GetData(format.Key, false);
+                    var bytes = raw as byte[];
+                    var stream = raw as Stream;
+                    if (bytes == null && stream != null) bytes = ReadImageBytes(stream);
+                    if (bytes == null || bytes.Length == 0) continue;
+                    if (bytes.Length > 64 * 1024 * 1024) continue;
+                    ClipboardTransfer.ValidateEncoded(bytes, format.Value);
+                    extension = format.Value; return bytes;
+                }
+                catch (ExternalException error) { if (log != null) log(new IOException("Clipboard format=" + format.Key + "; trying alternate representation", error)); }
+                catch (InvalidDataException error) { if (log != null) log(new IOException("Clipboard image is incomplete or corrupt; trying alternate representation", error)); }
+                        catch (IOException error) { if (log != null) log(new IOException("Clipboard format=" + format.Key + "; stream failed", error)); }
+                catch (NotSupportedException) { }
             }
-            var bytes = raw as byte[];
-            if (bytes != null) return bytes;
-            var stream = raw as Stream;
-            if (stream == null) return null;
-            return ReadImageBytes(stream);
+            return null; // Continue with the bitmap representation instead of aborting collection.
         }
 
         internal static byte[] ReadImageBytes(Stream stream)

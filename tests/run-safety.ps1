@@ -12,7 +12,7 @@ $references = @(
     "/r:$frameworkPath\Microsoft.VisualBasic.dll",
     '/r:System.dll', '/r:System.Core.dll', '/r:System.Drawing.dll', '/r:System.Windows.Forms.dll'
 )
-$sources = @('Core.cs', 'CapturePipeline.cs', 'WindowsClipboard.cs', 'WindowsNative.cs', 'RevealPolicy.cs') | ForEach-Object { Join-Path $projectRoot ('src\' + $_) }
+$sources = @('Core.cs', 'CapturePipeline.cs', 'WindowsClipboard.cs', 'ClipboardTransfer.cs', 'WindowsNative.cs', 'RevealPolicy.cs') | ForEach-Object { Join-Path $projectRoot ('src\' + $_) }
 $executable = Join-Path $outputPath 'SafetyTests.exe'
 & (Join-Path $frameworkPath 'csc.exe') /nologo /target:exe /platform:x64 /codepage:65001 "/out:$executable" $references $sources (Join-Path $PSScriptRoot 'SafetyTests.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Safety test compilation failed.' }

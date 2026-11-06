@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Interop;
@@ -30,6 +30,7 @@ namespace ScreenLine
         [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
         delegate bool WindowEnumerator(IntPtr window, IntPtr parameter);
         [DllImport("user32.dll")] static extern bool EnumWindows(WindowEnumerator callback, IntPtr parameter);
+        [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, WindowEnumerator callback, IntPtr parameter);
         [DllImport("user32.dll")] static extern bool IsIconic(IntPtr window);
         [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr window);
         [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out int value, int size);
@@ -89,14 +90,38 @@ namespace ScreenLine
 
         public static Point Cursor() { Point point; GetCursorPos(out point); return point; }
 
-        public static string ClipboardOwnerName()
+        internal static string ForegroundCaptureSource()
         {
-            uint process; ClipboardOwnerProcess(GetClipboardOwner(), out process);
+            string source = WindowSource(GetForegroundWindow());
+            return CapturePipeline.IsCaptureTool(source) ? source : null;
+        }
+
+        static string WindowSource(IntPtr window)
+        {
+            string name = ProcessForWindow(window);
+            if (!string.Equals(name, "ApplicationFrameHost", StringComparison.OrdinalIgnoreCase)) return name;
+            string childName = null;
+            EnumChildWindows(window, delegate(IntPtr child, IntPtr ignored) {
+                string candidate = ProcessForWindow(child);
+                if (CapturePipeline.IsCaptureTool(candidate)) { childName = candidate; return false; }
+                return true;
+            }, IntPtr.Zero);
+            return childName ?? name;
+        }
+
+        static string ProcessForWindow(IntPtr window)
+        {
+            uint process; ClipboardOwnerProcess(window, out process);
             if (process == 0) return null;
             try { using (var owner = System.Diagnostics.Process.GetProcessById((int)process)) return owner.ProcessName; }
             catch (ArgumentException) { return null; }
             catch (InvalidOperationException) { return null; }
             catch (System.ComponentModel.Win32Exception) { return null; }
+        }
+
+        public static string ClipboardOwnerName()
+        {
+            return WindowSource(GetClipboardOwner());
         }
 
         public static string WindowTitle(IntPtr window)

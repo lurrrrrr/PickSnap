@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -15,7 +15,7 @@ namespace ScreenLine
 {
     internal sealed class PinnedImageWindow : Window
     {
-        public readonly CaptureItem Item;
+        public CaptureItem Item;
         internal readonly Border Frame = new Border();
         internal readonly Button PinButton = new Button();
         readonly Thumbtack pin = new Thumbtack();

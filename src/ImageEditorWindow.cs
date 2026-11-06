@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -192,6 +192,20 @@ namespace ScreenLine
                         success = didSave = true;
                         dirty = false;
                         message = "已保存";
+                        if (closeAfterSave)
+                        {
+                            // Finish saves first; a busy clipboard must not discard saved edits.
+                            success = false;
+                            var payload = new DataObject();
+                            using (var stream = new MemoryStream(png))
+                                payload.SetImage(BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad).Frames[0]);
+                            payload.SetData("PNG", new MemoryStream(png));
+                            payload.SetData(ClipboardRules.OwnFormat, "1");
+                            await WindowsClipboard.Write(payload);
+                            copied();
+                            success = true;
+                            message = "已保存并复制";
+                        }
                     }
                     else { success = true; message = "已取消另存为"; }
                 }
@@ -199,7 +213,8 @@ namespace ScreenLine
             catch (Exception error)
             {
                 store.Log(error);
-                message = action == "copy" ? "复制未完成，请重试。" : "保存未完成，请确认文件未被其他程序占用。";
+                success = false;
+                message = didSave && closeAfterSave ? "图片已保存，但复制未完成，请点击复制重试。" : action == "copy" ? "复制未完成，请重试。" : "保存未完成，请确认文件未被其他程序占用。";
             }
             busy = false;
             if (closed) return;

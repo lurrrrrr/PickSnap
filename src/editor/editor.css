@@ -74,3 +74,142 @@ body[data-mode="filters"] #editor .FIE_canvas-container{padding-bottom:140px!imp
 .SfxModal-Wrapper .SfxButton-root:last-child{background:#2463ae!important;border-color:#2463ae!important;color:#fff!important}
 .SfxModal-Wrapper .SfxButton-root:last-child:hover{background:#1b5498!important}
 @media(max-width:760px){header{padding:0 10px;gap:6px}.tools{gap:1px}.divider{margin:0 4px}.history{padding-right:6px}.primary{padding:0 13px}}
+
+/* Advanced annotation controls share the editor's compact white surfaces. */
+#editor .FIE_tools-bar-wrapper{padding:8px 10px;border-radius:12px;box-shadow:0 6px 22px #25334a18}
+#editor .FIE_annotations-options{gap:6px!important}
+#editor .FIE_annotation-option-triggerer{border-radius:7px!important;min-width:32px;min-height:32px;color:#536172!important}
+#editor .FIE_annotation-option-triggerer:hover{background:#edf4ff!important;color:#2463ae!important}
+.SfxPopper-root{background:#fff!important;border:1px solid #dce2ea!important;border-radius:12px!important;box-shadow:0 8px 26px #25334a24!important;color:#343d49!important;font:13px/1.5 "Segoe UI","Microsoft YaHei",sans-serif!important}
+.SfxPopper-root label{color:#536172!important;font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif!important}
+.SfxPopper-root .SfxSlider-root{margin:8px 0 12px!important}
+.SfxPopper-root .SfxSlider-rail{background:#e4eaf2!important;height:4px!important;border-radius:4px!important}
+.SfxPopper-root .SfxSlider-Track{background:#2463ae!important;height:4px!important;border-radius:4px!important}
+.SfxPopper-root .SfxSlider-thumb{background:#fff!important;border:2px solid #2463ae!important;width:14px!important;height:14px!important;box-shadow:0 1px 4px #25334a26!important}
+.SfxPopper-root button{border-radius:6px!important}
+.SfxPopper-root input{color:#343d49!important;font:13px "Segoe UI","Microsoft YaHei",sans-serif!important}
+
+/* Style popup content is a separate library surface, not the Popper shell. */
+.FIE_annotation-option-popup{border-radius:12px!important;background:#fff!important;padding:0!important;overflow:visible!important}
+.FIE_annotation-option-popup>div{background:#fff!important;border-radius:12px!important;padding:14px 16px!important;gap:10px!important;color:#343d49!important}
+.FIE_annotation-option-popup *{font-family:"Segoe UI","Microsoft YaHei",sans-serif!important}
+.FIE_annotation-option-popup label{color:#536172!important;font-size:12px!important;line-height:20px!important}
+.FIE_annotation-option-popup .SfxSlider-root{min-width:110px;margin:6px 0 10px!important}
+.FIE_annotation-option-popup .SfxSlider-rail{background:#dce3ed!important}
+.FIE_annotation-option-popup .SfxSlider-Track{background:#2463ae!important}
+.FIE_annotation-option-popup .SfxSlider-thumb{box-shadow:none!important}
+#editor .FIE_annotations-options .FIE_annotation-option-triggerer{display:flex!important;align-items:center;justify-content:center;gap:6px;padding:7px 10px!important;height:34px!important;border:1px solid transparent!important;background:transparent;color:#536172!important}
+#editor .FIE_annotations-options .FIE_annotation-option-triggerer::after{content:attr(title);font:12px "Segoe UI","Microsoft YaHei",sans-serif;white-space:nowrap}
+#editor .FIE_annotations-options .FIE_annotation-option-triggerer svg{width:18px;height:18px;color:inherit!important}
+#editor .FIE_annotations-options .FIE_annotation-option-triggerer:hover{border-color:#d6e4f5!important;background:#edf4ff!important;color:#2463ae!important}
+@media(max-width:600px){#editor .FIE_annotations-options .FIE_annotation-option-triggerer{padding:6px!important}#editor .FIE_annotations-options .FIE_annotation-option-triggerer::after{font-size:11px}}
+
+/* Keep nested parameter surfaces from reintroducing the library's grey cards. */
+.FIE_annotation-option-popup>div>div{background:transparent!important}
+.FIE_annotation-option-popup .FIE_color-picker-triggerer{position:relative;display:block!important;width:28px!important;height:28px!important;margin:6px 0 2px 78px!important;border:1px solid #cdd6e2!important;border-radius:6px!important;overflow:visible!important}
+.FIE_annotation-option-popup .FIE_color-picker-triggerer::before{content:"阴影颜色";position:absolute;right:40px;top:3px;white-space:nowrap;color:#536172;font:12px/20px "Segoe UI","Microsoft YaHei",sans-serif;pointer-events:none}
+
+/* Fixed geometry per control type; color dialogs cannot resize their anchor. */
+.picksnap-parameter{width:214px!important;min-width:214px!important;max-width:214px!important}
+.picksnap-parameter.picksnap-shadow{width:260px!important;min-width:260px!important;max-width:260px!important}
+.picksnap-parameter.picksnap-position{width:144px!important;min-width:144px!important;max-width:144px!important}
+.picksnap-parameter>div{width:100%!important;box-sizing:border-box!important;padding:10px 12px!important;gap:6px!important}
+.picksnap-position>div>div{padding:0!important;margin:0!important}
+.parameter-redundant-title{display:none!important}
+.parameter-value{flex:0 0 38px!important;width:38px!important;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.picksnap-parameter:not(.picksnap-shadow) .SfxSlider-root{width:134px!important;min-width:134px!important;max-width:134px!important;flex:0 0 134px!important}
+.picksnap-shadow .SfxSlider-root{width:100px!important;min-width:100px!important;max-width:100px!important}
+.picksnap-shadow .FIE_color-picker-triggerer{box-sizing:border-box!important;flex:0 0 26px!important;width:26px!important;min-width:26px!important;max-width:26px!important;height:26px!important;min-height:26px!important;max-height:26px!important;margin:8px 0 0 80px!important;padding:0!important;transform:none!important}
+.picksnap-shadow .FIE_color-picker-triggerer::before{left:-80px!important;right:auto!important;top:3px!important;width:72px;text-align:left}
+
+/* Parameter type comes from editor state, never from mutable label text. */
+.picksnap-parameter>div{padding:8px 10px!important;gap:0!important}
+.picksnap-opacity>div>div,.picksnap-corner-radius>div{display:flex!important;align-items:center!important;justify-content:center!important;gap:10px!important;min-height:32px!important}
+.picksnap-opacity>div>div{padding:0!important;background:transparent!important}
+.picksnap-opacity .SfxSlider-root,.picksnap-corner-radius .SfxSlider-root{margin:0!important}
+.picksnap-position>div{padding:8px!important}
+.picksnap-shadow{height:192px!important;min-height:192px!important;max-height:192px!important}
+.picksnap-shadow>div{height:100%!important;display:block!important}
+.picksnap-shadow>div>div{width:100%!important;padding:0!important;margin:0!important;background:transparent!important}
+.picksnap-shadow .FIE_color-picker-triggerer{margin:8px 0 0 80px!important}
+
+/* Shared geometry: one outer inset, no nested library padding. */
+.FIE_annotation-option-popup.picksnap-opacity,
+.FIE_annotation-option-popup.picksnap-corner-radius{width:214px!important;min-width:214px!important;max-width:214px!important;height:44px!important;min-height:44px!important;max-height:44px!important}
+.picksnap-opacity>div,.picksnap-corner-radius>div{height:100%!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:0 12px!important;margin:0!important}
+.picksnap-parameter .parameter-row{display:flex!important;flex-direction:row!important;align-items:center!important;justify-content:center!important;gap:10px!important;padding:0!important;margin:0!important;min-height:0!important;width:100%!important;background:transparent!important}
+.parameter-row .parameter-value{margin:0!important;padding:0!important;line-height:20px!important;flex:0 0 42px!important;width:42px!important;text-align:right!important}
+.picksnap-parameter .parameter-row .SfxSlider-root{width:134px!important;min-width:134px!important;max-width:134px!important;margin:0!important;flex:0 0 134px!important}
+.FIE_annotation-option-popup.picksnap-position{width:134px!important;min-width:134px!important;max-width:134px!important;height:134px!important}
+.picksnap-position>div{height:100%!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:10px!important;margin:0!important}
+.picksnap-position>div>div{display:grid!important;grid-template-columns:repeat(3,38px)!important;grid-auto-rows:38px!important;gap:0!important;width:114px!important;padding:0!important;margin:0!important;box-shadow:none!important}
+.picksnap-position>div>div>div:empty{display:none!important}
+.picksnap-position>div>div>div:not(:empty){width:38px!important;height:38px!important;padding:0!important;margin:0!important}
+.FIE_annotation-option-popup.picksnap-shadow{height:auto!important;min-height:0!important;max-height:none!important}
+.picksnap-shadow>div{height:auto!important;padding:12px!important}
+.picksnap-shadow>div>div{display:block!important;padding:0!important;margin:0!important}
+.picksnap-shadow label{margin:0 0 4px!important;line-height:20px!important}
+.picksnap-shadow .SfxSlider-root{margin:4px 0 10px!important}
+.picksnap-shadow .FIE_color-picker-triggerer{margin:4px 0 0 80px!important}
+
+/* Equal outer insets; the value ends at the same inset as the track starts. */
+.FIE_annotation-option-popup.picksnap-opacity>div,
+.FIE_annotation-option-popup.picksnap-corner-radius>div{padding:0 14px!important}
+.picksnap-parameter .parameter-row{display:grid!important;grid-template-columns:minmax(0,1fr) 44px!important;gap:10px!important;align-items:center!important;width:100%!important}
+.picksnap-parameter .parameter-row .SfxSlider-root{width:100%!important;min-width:0!important;max-width:none!important;flex:initial!important}
+.picksnap-parameter .parameter-row .parameter-value{width:44px!important;min-width:0!important;margin:0!important;text-align:right!important}
+/* Hex has one field; RGB/HSL share the available width across three fields. */
+
+/* The fields belong to SelectWrapper, not directly to the action row. */
+.picksnap-parameter .parameter-row>*{min-width:0!important;max-width:100%!important;box-sizing:border-box!important}
+.picksnap-parameter .parameter-row>:first-child{width:100%!important;margin:0!important;padding:0!important}
+.picksnap-parameter .parameter-row .parameter-value{justify-self:end!important;width:44px!important;max-width:44px!important}
+
+/* Color form: aligned selector, equal numeric fields, separate pin action. */
+.SfxModal-Wrapper [role="dialog"]{border-radius:12px!important;box-shadow:0 10px 30px #18263826!important;background:#fff!important}
+.picksnap-parameter .parameter-row{grid-template-columns:minmax(0,1fr) max-content!important}
+.picksnap-parameter .parameter-row .parameter-value{width:auto!important;min-width:26px!important;max-width:none!important;font-variant-numeric:tabular-nums!important}
+/* Color dialog: a single layout contract replaces accumulated overrides. */
+.SfxModal-Wrapper [class*="sc-7tf41j-0"]{background:#fff!important;border:1px solid #dce2ea!important;border-radius:12px!important;box-shadow:0 14px 40px #18263826!important;max-width:360px!important}
+.SfxModal-Wrapper .SfxColorPicker-root{background:#fff!important;padding:0!important;border:0!important;box-shadow:none!important}
+.SfxModal-Wrapper .SfxColorPicker-action{display:flex!important;align-items:center!important;gap:10px!important;margin-bottom:14px!important;width:100%!important}
+.SfxModal-Wrapper .SfxColorPicker-action>div:first-child{display:flex!important;align-items:center!important;flex:1 1 auto!important;min-width:0!important;gap:8px!important}
+.SfxModal-Wrapper .SfxColorPicker-select{flex:0 0 72px!important;width:72px!important;min-width:72px!important}
+.SfxModal-Wrapper .SfxColorPicker-select>div{height:34px!important;min-height:34px!important}
+.SfxModal-Wrapper .SfxColorPicker-action .SfxInput-root{display:flex!important;align-items:center!important;justify-content:center!important;flex:1 1 0!important;width:0!important;min-width:0!important;height:34px!important;min-height:34px!important;max-height:34px!important;padding:0!important;box-sizing:border-box!important;border-radius:6px!important;overflow:hidden!important}
+.SfxModal-Wrapper .SfxColorPicker-action .SfxInput-root>div{display:flex!important;align-items:center!important;width:100%!important;min-width:0!important;height:100%!important;margin:0!important;padding:0!important}
+.SfxModal-Wrapper .SfxColorPicker-action input{display:block!important;position:static!important;transform:none!important;flex:1 1 auto!important;width:100%!important;min-width:0!important;height:32px!important;min-height:0!important;max-height:32px!important;margin:0!important;padding:0 8px!important;box-sizing:border-box!important;line-height:normal!important;text-align:right!important;font:13px "Segoe UI","Microsoft YaHei",sans-serif!important;color:#343d49!important}
+.SfxModal-Wrapper .SfxColorPicker-icon{display:flex!important;align-items:center!important;justify-content:center!important;flex:0 0 22px!important;width:22px!important;height:32px!important;color:#65717f!important}
+.SfxModal-Wrapper .SfxColorPicker-range-picker{border-radius:8px!important;overflow:hidden!important;height:164px!important}
+.SfxModal-Wrapper .SfxColorPicker-bar-wrapper{margin:12px 0!important}
+.SfxModal-Wrapper [class*="sc-qj4xo5-11"]{margin:10px 0 0!important;padding:0!important;min-height:28px!important}
+.SfxModal-Wrapper [class*="sc-7tf41j-2"]{padding:14px 24px 20px!important;gap:10px!important;background:#fff!important}
+
+/* Center field values; reserve an independent trailing slot for the chevron. */
+.SfxModal-Wrapper .SfxColorPicker-action input{text-align:center!important}
+.SfxModal-Wrapper .SfxColorPicker-select .SfxSelect-root{display:flex!important;align-items:center!important;position:relative!important;height:34px!important;box-sizing:border-box!important;padding:0 24px 0 8px!important}
+.SfxModal-Wrapper .SfxColorPicker-select .SfxSelect-Label{width:100%!important;flex:1!important;margin:0!important;padding:0!important;text-align:center!important;line-height:32px!important}
+.SfxModal-Wrapper .SfxColorPicker-select .SfxSelect-Icon{position:absolute!important;right:6px!important;top:50%!important;transform:translateY(-50%)!important;padding:0!important}
+.SfxModal-Wrapper .SfxColorPicker-icon{border-radius:6px!important;cursor:pointer}
+.SfxModal-Wrapper .SfxColorPicker-icon:hover{background:#edf4ff!important;color:#2463ae!important}
+.SfxModal-Wrapper .SfxColorPicker-icon:focus-visible{outline:2px solid #2463ae;outline-offset:2px}
+.SfxModal-Wrapper [class*="sc-qj4xo5-11"]::before{content:"透明色与常用色";display:block;flex-basis:100%;margin-bottom:8px;color:#65717f;font:12px "Segoe UI","Microsoft YaHei",sans-serif}
+
+/* Quiet, consistent color controls and denser saved-color spacing. */
+.SfxModal-Wrapper .SfxColorPicker-select .SfxSelect-root{padding:0 22px!important}
+.SfxModal-Wrapper .SfxColorPicker-select .SfxSelect-Label{text-align:center!important;display:block!important}
+.SfxModal-Wrapper .SfxColorPicker-icon:focus:not(:focus-visible){outline:none!important;box-shadow:none!important}
+.SfxModal-Wrapper .SfxColorPicker-icon:focus-visible{outline:1px solid #2463ae!important;outline-offset:1px!important}
+.SfxModal-Wrapper [class*="sc-qj4xo5-11"]{gap:6px!important;margin-top:8px!important}
+.SfxModal-Wrapper [class*="sc-qj4xo5-11"]>.item{margin:0!important}
+.SfxModal-Wrapper [class*="sc-qj4xo5-11"] label{width:26px!important;height:26px!important;border-radius:5px!important;margin-bottom:0!important}
+.SfxModal-Wrapper [class*="sc-7tf41j-2"]{padding-top:12px!important}
+#SfxPopper .SfxMenu-root{border-radius:8px!important;box-shadow:0 4px 14px #25334a18!important;padding:4px!important;background:#fff!important}
+#SfxPopper .SfxMenuItem-root{min-height:30px!important;border-radius:5px!important;font-size:13px!important}
+
+/* Distinguish actual selection from pointer hover and keyboard focus. */
+#SfxPopper .SfxMenuItem-root{background:#fff!important;transition:background-color 100ms ease!important}
+#SfxPopper .SfxMenuItem-root:hover{background:#f0f3f7!important}
+#SfxPopper .SfxMenuItem-root:has(.SfxSelect-tickIcon){background:#eaf2fd!important;color:#2463ae!important}
+#SfxPopper .SfxMenuItem-root:has(.SfxSelect-tickIcon):hover{background:#dceafa!important}
+#SfxPopper .SfxMenuItem-root:focus-visible{outline:1px solid #2463ae!important;outline-offset:-2px!important}

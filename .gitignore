@@ -38,3 +38,6 @@ Thumbs.db
 # Python 脚本缓存
 __pycache__/
 .pytest_cache/
+
+# Local interaction reference (kept on this computer)
+/docs/INTERACTIONS.zh-CN.md

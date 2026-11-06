@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -891,6 +891,7 @@ namespace ScreenLine
         public readonly List<CaptureItem> Collected = new List<CaptureItem>();
         public readonly StateStore Store;
         public event Action Changed;
+        public event Action<CaptureItem, CaptureItem> ImageReplaced;
 
         public Gallery(StateStore store) { Store = store; }
 
@@ -988,6 +989,7 @@ namespace ScreenLine
                 Store.State.Collection = Collected.Select(i => i.Path).ToList();
                 throw;
             }
+            if (ImageReplaced != null) ImageReplaced(item, copy);
             Notify();
             return copy;
         }

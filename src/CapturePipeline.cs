@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -14,6 +14,7 @@ namespace ScreenLine
     {
         public byte[] Bytes;
         public string Extension;
+        public string Source;
     }
 
     internal sealed class CapturePipeline : IDisposable
@@ -31,11 +32,13 @@ namespace ScreenLine
         // 截图工具在一次截图或标注过程中会反复重写剪贴板：等它安静下来再读，并用内容指纹吸收残余重写。
         static readonly TimeSpan ClipboardRepeat = TimeSpan.FromSeconds(3);
         // 剪贴板所有者是截图工具时，与绳上那张同尺寸、画面又相近的新版本只暂存不入库；
-        // 剪贴板安静这么久（用户改完、点了复制，截图工具不再自动写入）才落盘，覆盖绳上那张。
-        static readonly TimeSpan ClipboardCommit = TimeSpan.FromSeconds(3);
+        // 短暂合并连续通知后落盘，覆盖绳上那张；无需离开编辑器。
+        static readonly TimeSpan ClipboardCommit = TimeSpan.FromMilliseconds(350);
         const double ClipboardEditTolerance = 0.35;
         const int ClipboardSettle = 600;
         CaptureItem clipboardPending;
+        uint observedCaptureSequence;
+        string observedCaptureSource;
         // 最近一次真正落盘的剪贴板图片。截图工具退出时还会再写一次剪贴板，而那时它进程已销毁，
         // 剪贴板所有者查不到名字，没法靠进程名识别；用内容指纹兜底：和刚保存的一模一样就不重复收。
         string clipboardLastFingerprint;
@@ -134,6 +137,8 @@ namespace ScreenLine
         {
             if (CollectClipboard && WindowsNative.GetClipboardSequenceNumber() != clipboardSequence)
             {
+                observedCaptureSequence = WindowsNative.GetClipboardSequenceNumber();
+                observedCaptureSource = WindowsNative.ForegroundCaptureSource();
                 var cursor = WindowsNative.Cursor();
                 clipboardOrigin = new Point(cursor.X, cursor.Y);
                 clipboardDue = DateTime.UtcNow.AddMilliseconds(ClipboardSettle);
@@ -273,10 +278,10 @@ namespace ScreenLine
             {
                 if (!CollectClipboard || sequence == clipboardSequence) return;
                 clipboardSequence = sequence;
-                ClipboardPicture picture = await ReadClipboardImage(sequence);
+                ClipboardPicture picture = await ReadClipboardImage(sequence, gallery.Store.Log, sequence == observedCaptureSequence ? observedCaptureSource : null);
                 if (picture == null || disposed || !CollectClipboard || WindowsNative.GetClipboardSequenceNumber() != sequence) return;
                 // 所有者可能查不到（截图工具刚退出时进程已销毁），这里统一成空串，避免后续按名字判断时空引用。
-                string owner = WindowsNative.ClipboardOwnerName() ?? string.Empty;
+                string owner = picture.Source ?? string.Empty;
                 ImageContent content = await Task.Run(() => ImageContent.Decode(picture.Bytes));
                 if (disposed || !CollectClipboard || WindowsNative.GetClipboardSequenceNumber() != sequence) return;
                 if (!receipts.Accept(content.Fingerprint, CaptureSource.Clipboard, DateTime.UtcNow, ClipboardRepeat))
@@ -314,10 +319,20 @@ namespace ScreenLine
             finally { clipboardBusy = false; }
         }
 
-        internal static Task<ClipboardPicture> ReadClipboardImage(uint sequence)
+        internal static string ResolveCaptureSource(string owner, string observedCapture)
+        {
+            // Only a same-sequence event observed in a local screenshot editor may explain a broker owner.
+            if ((string.IsNullOrEmpty(owner) || string.Equals(owner, "svchost", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(owner, "ApplicationFrameHost", StringComparison.OrdinalIgnoreCase)) && IsCaptureTool(observedCapture))
+                return observedCapture;
+            return owner;
+        }
+
+        internal static Task<ClipboardPicture> ReadClipboardImage(uint sequence, Action<Exception> log = null, string observedCapture = null)
         {
             return WindowsClipboard.ReadOnSta(delegate
             {
+                string source = ResolveCaptureSource(WindowsNative.ClipboardOwnerName(), observedCapture);
                 IDataObject data = null;
                 for (int attempt = 0; attempt < 5; attempt++)
                 {
@@ -326,13 +341,13 @@ namespace ScreenLine
                     catch (ExternalException) { System.Threading.Thread.Sleep(50); }
                 }
                 if (data == null || WindowsNative.GetClipboardSequenceNumber() != sequence) return null;
-                string source = WindowsNative.ClipboardOwnerName();
-                if (WindowsNative.GetClipboardSequenceNumber() != sequence) return null;
-                return ReadImage(data, source).GetAwaiter().GetResult();
+                var result = ReadImage(data, source, log, sequence).GetAwaiter().GetResult();
+                if (result != null) result.Source = source ?? string.Empty;
+                return result;
             });
         }
 
-        internal static async Task<ClipboardPicture> ReadImage(IDataObject data, string source)
+        internal static async Task<ClipboardPicture> ReadImage(IDataObject data, string source, Action<Exception> log = null, uint? nativeSequence = null)
         {
             string imageFile;
             if (!ClipboardRules.IsImage(data, source, out imageFile)) return null;
@@ -349,7 +364,10 @@ namespace ScreenLine
                 return new ClipboardPicture { Bytes = original, Extension = Path.GetExtension(imageFile) };
             }
             string extension;
-            byte[] bytes = WindowsClipboard.ReadEncodedImage(data, out extension);
+            byte[] bytes = nativeSequence.HasValue
+                ? ClipboardTransfer.ReadEncoded(nativeSequence.Value, out extension, log)
+                : WindowsClipboard.ReadEncodedImage(data, out extension, log);
+            if (nativeSequence.HasValue && WindowsNative.GetClipboardSequenceNumber() != nativeSequence.Value) return null;
             if (bytes == null)
             {
                 BitmapSource image = data.GetData(DataFormats.Bitmap) as BitmapSource;
@@ -361,7 +379,7 @@ namespace ScreenLine
 
         // 只有截图工具会这么干：截完图、打开编辑器、每改一笔，都把整张图重新塞进剪贴板。
         // 它的遮罩进程与编辑器进程不是同一个，所以按名字前缀认，不要求前后两次完全一致。
-        static bool IsCaptureTool(string name)
+        internal static bool IsCaptureTool(string name)
         {
             return !string.IsNullOrEmpty(name)
                 && (name.IndexOf("Snip", StringComparison.OrdinalIgnoreCase) >= 0
@@ -385,6 +403,12 @@ namespace ScreenLine
             clipboardPending = candidate; clipboardLastCommitAt = DateTime.UtcNow; clipboardLastFingerprint = fingerprint;
         }
 
+        bool AssociationRejected(string owner, string reason)
+        {
+            gallery.Store.Log(new InvalidOperationException("Clipboard association: source=" + (owner ?? "unknown") + "; " + reason + "; preserving as new image"));
+            return false;
+        }
+
         internal bool StageEditedClipboard(ClipboardPicture picture, ImageContent content, string owner)
         {
             CaptureItem pending = clipboardPending;
@@ -396,13 +420,13 @@ namespace ScreenLine
             }
             if (pending == null) { return false; }
             // 截图工具活着时进程名能查到；退出时最后写一次剪贴板、进程随即销毁，所有者就是空的，同样算它。
-            if (!IsCaptureTool(owner) && owner.Length > 0) { return false; }
+            if (!IsCaptureTool(owner) && owner.Length > 0) { return AssociationRejected(owner, "source is not a recognized screenshot editor"); }
             // 十分钟窗口不能只看剪贴板提交时间：PrtSc 这类截图工具会先把文件落盘（文件夹监听先收到、
             // 剪贴板那路被配对去重拦下），从没有过剪贴板提交记录。窗口锚在图片入库的时刻上——
             // 剪贴板路径提交即写新文件，两者一致；文件路径就是截图落盘时间。取两者较新者兜底。
             DateTime anchored = clipboardLastCommitAt > File.GetCreationTimeUtc(pending.Path)
                 ? clipboardLastCommitAt : File.GetCreationTimeUtc(pending.Path);
-            if (DateTime.UtcNow - anchored > TimeSpan.FromMinutes(10)) { return false; }
+            if (DateTime.UtcNow - anchored > TimeSpan.FromMinutes(10)) { return AssociationRejected(owner, "candidate is older than ten minutes"); }
             bool sameSize = content.PixelWidth == pending.Image.PixelWidth && content.PixelHeight == pending.Image.PixelHeight;
             double difference;
             if (sameSize) difference = ImageContent.Difference(pending.Image, content);
@@ -412,7 +436,7 @@ namespace ScreenLine
                 if (!File.Exists(pending.Path)) { return false; }
                 difference = ImageContent.DifferenceAcrossSizes(pending.Path, pending.Image.PixelWidth, picture.Bytes, content.PixelWidth);
             }
-            if (difference > ClipboardEditTolerance) { return false; }
+            if (difference > ClipboardEditTolerance) { return AssociationRejected(owner, "image difference=" + difference.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "; size=" + content.PixelWidth + "x" + content.PixelHeight + "; candidate=" + pending.Image.PixelWidth + "x" + pending.Image.PixelHeight); }
             clipboardStaged = content;
             clipboardStagedTarget = pending;
             clipboardStagedBytes = picture.Bytes;

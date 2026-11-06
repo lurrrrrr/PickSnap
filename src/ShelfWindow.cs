@@ -153,8 +153,9 @@ namespace ScreenLine
         double drawnDip = -1, drawnDipCenter = -1;
         bool dragMoved;
         ShotCard suppressGripClick;
-        double PhotoWidth { get { return Math.Max(1, (ActualWidth > 0 ? ActualWidth : Width) - 48 - AccessoryWidth); } }
-        double LineWidth { get { return Math.Max(1, (ActualWidth > 0 ? ActualWidth : Width) - 48); } }
+        const double RopeInset = 12;
+        double PhotoWidth { get { return Math.Max(1, (ActualWidth > 0 ? ActualWidth : Width) - 2 * RopeInset - AccessoryWidth); } }
+        double LineWidth { get { return Math.Max(1, (ActualWidth > 0 ? ActualWidth : Width) - 2 * RopeInset); } }
         double ScrollLimit { get { return Math.Max(0, content.Width - PhotoWidth); } }
         internal Point TextAnchor
         {
@@ -194,7 +195,7 @@ namespace ScreenLine
             viewport.HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden;
             viewport.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
             viewport.Content = content;
-            viewport.Margin = new Thickness(24, 0, 284, 0);
+            viewport.Margin = new Thickness(RopeInset, 0, RopeInset + 260, 0);
             viewport.RenderTransform = slide;
             viewport.ScrollChanged += delegate(object sender, ScrollChangedEventArgs e)
             {
@@ -218,7 +219,7 @@ namespace ScreenLine
                 e.Handled = true;
             };
             var root = new Grid();
-            line.Margin = new Thickness(24, 0, 24, 0); line.RenderTransform = slide; line.IsHitTestVisible = false;
+            line.Margin = new Thickness(RopeInset, 0, RopeInset, 0); line.RenderTransform = slide; line.IsHitTestVisible = false;
             line.Children.Add(rope); root.Children.Add(line);
             root.Children.Add(viewport); Content = root;
             Appearance = LineTheme.FromId(gallery.Store.State.Theme);
@@ -229,7 +230,7 @@ namespace ScreenLine
                     if (gallery.Contains(entry.Key)) manualOffsets[entry.Key] = entry.Value;
             RopeLine.Apply(rope, Appearance);
 
-            var basket = basketHolder = new Canvas { Width = 156, Height = 220, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 0, 24, 0), RenderTransform = slide };
+            var basket = basketHolder = new Canvas { Width = 156, Height = 220, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 0, RopeInset, 0), RenderTransform = slide };
             var basketBody = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
             basketImage.Source = PictureBasket.Source(Appearance);
             RenderOptions.SetBitmapScalingMode(basketImage, BitmapScalingMode.HighQuality);
@@ -370,6 +371,7 @@ namespace ScreenLine
                 if (displaySwitchShown) Reveal(true, true, 0);
             };
             gallery.Changed += Update;
+            gallery.ImageReplaced += ReplaceCard;
             Microsoft.Win32.SystemEvents.DisplaySettingsChanged += DisplaysChanged;
             Closed += delegate
             {
@@ -382,6 +384,7 @@ namespace ScreenLine
                 StopRendering();
                 foreach (var flight in flights.ToArray()) flight.Close();
                 gallery.Changed -= Update;
+                gallery.ImageReplaced -= ReplaceCard;
                 Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= DisplaysChanged;
                 foreach (var card in cards.Values) card.Dispose();
             };
@@ -440,6 +443,20 @@ namespace ScreenLine
             if (!Revealed) { MoveToDisplay(); if (revealAfter) Reveal(true, true, 0); return; }
             Reveal(false, false, 0);
             displaySwitch.Start();
+        }
+
+        void ReplaceCard(CaptureItem before, CaptureItem after)
+        {
+            ShotCard card;
+            if (!cards.TryGetValue(before.Path, out card)) return;
+            cards.Remove(before.Path); cards[after.Path] = card; card.Item = after;
+            if (settled.Remove(before.Path)) settled.Add(after.Path);
+            double offset;
+            if (manualOffsets.TryGetValue(before.Path, out offset)) { manualOffsets.Remove(before.Path); manualOffsets[after.Path] = offset; }
+            PinnedImageWindow pin;
+            if (pins.TryGetValue(before.Path, out pin)) {
+                pins.Remove(before.Path); pins[after.Path] = pin; pin.Item = after; pin.UpdateImage();
+            }
         }
 
         public void Update()
@@ -551,6 +568,9 @@ namespace ScreenLine
                 if (manualOffsets.TryGetValue(item.Path, out saved)) contentWidth = Math.Max(contentWidth, saved + CardWidth + 16);
                 else if (settled.Contains(item.Path)) contentWidth = Math.Max(contentWidth, holder.MountX + CardWidth + 16);
             }
+            // Preserve the viewport when deleting the rightmost card. Reserve enough
+            // trailing space to scroll even a short, manually positioned row left.
+            if (gallery.Items.Count > 0 && !double.IsNaN(content.Width)) contentWidth = Math.Max(contentWidth, content.Width);
             content.Width = contentWidth;
             content.Height = 220;
             scrollMotion.Target = Math.Max(0, Math.Min(ScrollLimit, scrollMotion.Target));
@@ -598,23 +618,16 @@ namespace ScreenLine
                 }
                 else
                 {
-                    // 新卡片：接在最右一张已挂卡片的后面，保持"一张接一张挂上去"的顺序；
-                    // 最后一张已经贴到绳端时，回到绳子最左边的空位（相当于换到下一屏继续挂）。
-                    double lastX = placed.Count > 0 ? placed.Max() : -1;
-                    double candidate = lastX >= 0 ? lastX + CardStep : 0;
-                    if (lastX >= 0 && candidate > content.Width - CardWidth - 16) candidate = 0;
-                    x = NearestFree(blocked, candidate);
-                    if (x < 0)
-                    {
-                        x = content.Width;
-                        content.Width = x + CardWidth + 16;
-                    }
+                    // Append after every occupied clip, including manually placed and pinned cards.
+                    x = blocked.Count > 0 ? blocked.Max() + CardStep : 0;
+                    content.Width = Math.Max(content.Width, x + CardWidth + 16);
                     settled.Add(hanging[i].Path);
                 }
                 placed.Add(x); blocked.Add(x);
                 card.Place(x, !Revealed);
                 card.Frame(0, ropeMotion.Position, LineWidth, viewport.HorizontalOffset, viewport.ActualWidth);
             }
+            if (placed.Count > 0) content.Width = Math.Max(content.Width, placed.Max() + available);
             UpdateScrollHint();
         }
 
@@ -622,6 +635,8 @@ namespace ScreenLine
         void UpdateScrollHint()
         {
             double limit = ScrollLimit;
+            scrollLeft.Margin = new Thickness(RopeInset, 26, 0, 0);
+            scrollRight.Margin = new Thickness(0, 26, RopeInset + AccessoryWidth, 0);
             bool overflow = limit > 2;
             scrollRight.Visibility = overflow && viewport.HorizontalOffset < limit - 2 ? Visibility.Visible : Visibility.Collapsed;
             scrollLeft.Visibility = overflow && viewport.HorizontalOffset > 2 ? Visibility.Visible : Visibility.Collapsed;
@@ -860,9 +875,9 @@ namespace ScreenLine
             bool basket = ShowBasket, envelope = ShowEnvelope;
             BasketButton.Visibility = basketHolder.Visibility = basket ? Visibility.Visible : Visibility.Collapsed;
             TextButton.Visibility = textHolder.Visibility = envelope ? Visibility.Visible : Visibility.Collapsed;
-            textHolder.Margin = new Thickness(0, 0, 24, 0);
-            basketHolder.Margin = new Thickness(0, 0, envelope ? 136 : 24, 0);
-            viewport.Margin = new Thickness(24, 0, 24 + AccessoryWidth, 0);
+            textHolder.Margin = new Thickness(0, 0, RopeInset, 0);
+            basketHolder.Margin = new Thickness(0, 0, envelope ? RopeInset + 112 : RopeInset, 0);
+            viewport.Margin = new Thickness(RopeInset, 0, RopeInset + AccessoryWidth, 0);
             drawnWidth = -1;
         }
 
@@ -1396,7 +1411,7 @@ namespace ScreenLine
 
     internal sealed class ShotCard : Canvas, IDisposable
     {
-        public readonly CaptureItem Item;
+        public CaptureItem Item;
         public readonly Border Surface = new Border();
         internal readonly Button Grip = new Button();
         readonly TranslateTransform clipLift = new TranslateTransform();
@@ -1559,9 +1574,11 @@ namespace ScreenLine
         public bool UpdateImage()
         {
             if (displayed == Item.Image) return false;
+            bool updating = displayed != null;
             displayed = Item.Image;
             menu.SetDetails(displayed.PixelWidth + " × " + displayed.PixelHeight);
             photo.Source = displayed.Thumbnail;
+            if (updating) photo.BeginAnimation(OpacityProperty, new DoubleAnimation(0.65, 1, TimeSpan.FromMilliseconds(180)));
             double scale = Math.Min(142.0 / displayed.Thumbnail.PixelWidth, 98.0 / displayed.Thumbnail.PixelHeight);
             photo.Width = displayed.Thumbnail.PixelWidth * scale;
             photo.Height = displayed.Thumbnail.PixelHeight * scale;

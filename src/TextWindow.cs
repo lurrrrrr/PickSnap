@@ -54,7 +54,9 @@ namespace ScreenLine
         readonly TextBlock count = new TextBlock();
         readonly TextBlock feedback = new TextBlock { Foreground = LightTheme.Brush("#65717F"), FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
         readonly TextBlock empty = new TextBlock { TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Foreground = LightTheme.Brush("#65717F"), Margin = new Thickness(20) };
-        readonly Polygon pointer = new Polygon { Points = new PointCollection { new Point(0, 12), new Point(12, 0), new Point(24, 12) }, Fill = LightTheme.Brush("#FFFFFF"), Width = 24, Height = 12, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        readonly System.Windows.Shapes.Path pointer = new System.Windows.Shapes.Path { Data = Geometry.Parse("M0,9 L8,1 L16,9"), Fill = LightTheme.Brush("#FFFFFF"), Stroke = LightTheme.Brush("#E0E4EA"), StrokeThickness = 1, Width = 16, Height = 10, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false };
+        Action updateOutline;
+
         readonly DispatcherTimer feedbackTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         // 信封收起后的孤儿面板自毁定时器：收集关着且一条文字都没有时，窗口没有存在意义。
         readonly DispatcherTimer orphanTimer = new DispatcherTimer();
@@ -92,7 +94,26 @@ namespace ScreenLine
             body.RowDefinitions.Add(new RowDefinition());
             body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(48) });
             var card = LightTheme.Card(body); card.Margin = new Thickness(16, 11, 16, 16); card.Padding = new Thickness(0); card.CornerRadius = new CornerRadius(12);
+            body.SizeChanged += delegate { body.Clip = new RectangleGeometry(new Rect(0, 0, body.ActualWidth, body.ActualHeight), 11, 11); };
+            card.Effect = null;
+            pointer.Stroke = card.BorderBrush;
+            pointer.Fill = card.Background;
+            pointer.StrokeThickness = card.BorderThickness.Top;
+            pointer.StrokeLineJoin = PenLineJoin.Round;
             root.Children.Add(card); root.Children.Add(pointer);
+            // Clip the window surface itself, not only its children: transparent
+            // corners must never expose a rectangular backing surface.
+            updateOutline = delegate {
+                var shape = new GeometryGroup { FillRule = FillRule.Nonzero };
+                shape.Children.Add(new RectangleGeometry(new Rect(16, 11, Math.Max(0, root.ActualWidth - 32), Math.Max(0, root.ActualHeight - 27)), 12, 12));
+                if (pointer.Visibility == Visibility.Visible) {
+                    var tip = pointer.Data.Clone(); tip.Transform = new TranslateTransform(pointer.Margin.Left, pointer.Margin.Top); shape.Children.Add(tip);
+                    shape.Children.Add(tip.GetWidenedPathGeometry(new Pen(pointer.Stroke, pointer.StrokeThickness + 1)));
+                }
+                root.Clip = shape;
+            };
+
+            root.SizeChanged += delegate { updateOutline(); };
 
             var header = new Grid { Margin = new Thickness(18, 0, 14, 0) };
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -125,10 +146,10 @@ namespace ScreenLine
             AutomationProperties.SetName(undoButton, "撤销一条删除"); AutomationProperties.SetName(undoOptions, "更多撤销方式"); AutomationProperties.SetName(redoButton, "重做删除");
             header.Children.Add(heading);
             var close = LightTheme.Button("", Close, "quiet"); close.Content = LightTheme.CloseIcon();
-            close.Width = close.Height = 28; close.MinWidth = 0; close.Padding = new Thickness(0); close.HorizontalAlignment = HorizontalAlignment.Right;
+            close.Width = close.Height = 28; close.MinWidth = close.MinHeight = 0; close.VerticalAlignment = VerticalAlignment.Center; close.Padding = new Thickness(0); close.HorizontalAlignment = HorizontalAlignment.Right;
             AutomationProperties.SetName(close, "关闭文字"); Grid.SetColumn(close, 2); header.Children.Add(close); body.Children.Add(header);
 
-            var searchPanel = new Grid { Margin = new Thickness(18, 0, 18, 10) };
+            var searchPanel = new Grid { Margin = new Thickness(20, 0, 30, 10) };
             Search.BorderThickness = new Thickness(0); Search.Background = Brushes.Transparent; Search.Padding = new Thickness(13, 8, 13, 8);
             Search.VerticalContentAlignment = VerticalAlignment.Center; Search.FontSize = 13; Search.Foreground = LightTheme.Brush("#283343");
             AutomationProperties.SetName(Search, "搜索文字");
@@ -248,7 +269,8 @@ namespace ScreenLine
             double top = Math.Max(area.Top + 4 * dpi, Math.Min(area.Bottom - Height * dpi, anchor.Y));
             // 信封没摆出来时窗口退到屏幕右上，小三角指向的是虚空，藏掉。
             pointer.Visibility = shelf.TextButton.IsVisible ? Visibility.Visible : Visibility.Collapsed;
-            pointer.Margin = new Thickness(Math.Max(30, Math.Min(Width - 54, (anchor.X - left) / dpi - 12)), 0, 0, 0);
+            pointer.Margin = new Thickness(Math.Max(30, Math.Min(Width - 54, (anchor.X - left) / dpi - 8)), 3, 0, 0);
+            if (updateOutline != null) updateOutline();
             var handle = new WindowInteropHelper(this).Handle;
             if (handle != IntPtr.Zero) WindowsNative.SetWindowPos(handle, new IntPtr(-1), (int)Math.Round(left), (int)Math.Round(top), (int)Math.Round(Width * dpi), (int)Math.Round(Height * dpi), 0x10);
         }

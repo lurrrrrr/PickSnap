@@ -48,11 +48,47 @@ New-ItemProperty -Path $uninstallKey -Name NoModify -Value 1 -PropertyType DWord
 New-ItemProperty -Path $uninstallKey -Name NoRepair -Value 1 -PropertyType DWord -Force | Out-Null
 Start-Process -FilePath $exePath -WindowStyle Hidden
 
-# 程序文件全部是复制过来的，装完解压目录就不再是运行所需。用对话框明确告知可删，
-# 并写出具体路径——之前只有一句 Write-Output，Install.cmd 的窗口一闪就关，用户根本看不到。
-$sourcePath = [IO.Path]::GetFullPath($PSScriptRoot)
-Add-Type -AssemblyName System.Windows.Forms | Out-Null
-[System.Windows.Forms.MessageBox]::Show(
-    ("PickSnap 安装完成，桌面已创建 PickSnap 快捷方式。`n`n程序已安装到：`n$installPath`n`n本次解压出来的文件夹已经不再需要，可以整个删除：`n$sourcePath`n`n卸载程序只清理上面的安装目录，不会动这个解压文件夹。`n（想留着以后重装，保留下载的 zip 安装包本身即可。）"),
-    'PickSnap 安装完成', 'OK', 'Information') | Out-Null
+# WPF completion view with installation and cleanup locations.
+Add-Type -AssemblyName PresentationFramework
+[xml]$completionXaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="PickSnap" Width="510" MaxHeight="700" SizeToContent="Height" ResizeMode="NoResize" WindowStartupLocation="CenterScreen" Background="#F5F7FA" FontFamily="Microsoft YaHei" ShowInTaskbar="True">
+ <Window.Resources>
+  <Style TargetType="Button"><Setter Property="Background" Value="#2866AD"/><Setter Property="Foreground" Value="White"/><Setter Property="Padding" Value="24,10"/><Setter Property="FontSize" Value="14"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#215793"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter Property="Opacity" Value="0.85"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+  </Style>
+ </Window.Resources>
+ <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="20">
+  <Grid Margin="0,0,0,16">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+   <TextBlock Text="PickSnap 安装完成" FontSize="21" FontWeight="SemiBold" Foreground="#223247" VerticalAlignment="Center"/>
+   <TextBlock Grid.Column="1" Text="已创建快捷方式" FontSize="13" Foreground="#62748A" VerticalAlignment="Center" Margin="16,0,0,0"/>
+  </Grid>
+  <Border Background="White" CornerRadius="10" Padding="10" Margin="0,0,0,12">
+   <StackPanel><TextBlock Text="安装位置" FontSize="12" Foreground="#6A7A8E"/><TextBlock x:Name="InstallLocation" FontSize="13" Foreground="#223247" TextWrapping="Wrap" Margin="0,8,0,0"/></StackPanel>
+  </Border>
+  <Border Background="White" CornerRadius="10" Padding="10" Margin="0,0,0,12">
+   <StackPanel>
+    <TextBlock Text="解压文件夹可以删除" FontSize="14" FontWeight="SemiBold" Foreground="#223247"/>
+    <TextBlock Text="程序已安装完成，下面这个解压文件夹已不再需要，可以整个删除：" FontSize="13" Foreground="#62748A" TextWrapping="Wrap" Margin="0,8,0,0"/>
+    <TextBlock x:Name="ExtractLocation" FontSize="13" Foreground="#223247" TextWrapping="Wrap" Margin="0,8,0,0"/>
+   </StackPanel>
+  </Border>
+  <TextBlock Text="卸载时会清理上方的安装目录、快捷方式和开机启动项，不会删除这个解压文件夹。图片、文字与设置是否保留，由你在卸载时选择。" FontSize="13" Foreground="#52647A" TextWrapping="Wrap"/>
+  <TextBlock Text="如需留着以后重装，保留下载的 ZIP 安装包即可。" FontSize="13" Foreground="#62748A" TextWrapping="Wrap" Margin="0,10,0,0"/>
+  <Button x:Name="Finish" Content="完成" HorizontalAlignment="Right" MinWidth="110" Margin="0,16,0,0" IsDefault="True" IsCancel="True"/>
+ </StackPanel></ScrollViewer>
+</Window>
+"@
+$completionWindow = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $completionXaml))
+# Use the installed application's icon instead of the PowerShell host icon.
+Add-Type -AssemblyName System.Drawing
+$appIcon = [Drawing.Icon]::ExtractAssociatedIcon($exePath)
+try {
+    $completionWindow.Icon = [Windows.Interop.Imaging]::CreateBitmapSourceFromHIcon($appIcon.Handle, [Windows.Int32Rect]::Empty, [Windows.Media.Imaging.BitmapSizeOptions]::FromEmptyOptions())
+    $completionWindow.Icon.Freeze()
+} finally { if ($appIcon) { $appIcon.Dispose() } }
+$completionWindow.FindName('InstallLocation').Text = $installPath
+$completionWindow.FindName('ExtractLocation').Text = [IO.Path]::GetFullPath($PSScriptRoot)
+$completionWindow.FindName('Finish').Add_Click({ $completionWindow.Close() })
+$completionWindow.ShowDialog() | Out-Null
 Write-Output 'PickSnap 安装完成，桌面已创建 PickSnap 快捷方式。'

@@ -36,7 +36,7 @@
 
 ## はじめに
 
-1. Releases から `PickSnap-2.0.0-windows-x64.zip` をダウンロードし、すべて展開します。
+1. Releases から `PickSnap-2.1.0-windows-x64.zip` をダウンロードし、すべて展開します。
 2. `Install.cmd` を実行します。管理者権限なしで `%LOCALAPPDATA%\Programs\PickSnap` にインストールされます。
 3. スクリーンショットを撮り、ポインターを画面上端に移動してロープを表示します。
 

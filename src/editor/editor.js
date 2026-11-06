@@ -340,6 +340,11 @@ document.querySelectorAll('[data-size]').forEach(button=>button.addEventListener
 document.querySelectorAll('[data-width]').forEach(button=>button.addEventListener('click',()=>updateDrawingStyle({strokeWidth:Number(button.dataset.width)})));
 document.querySelectorAll('[data-tool]').forEach(button=>button.addEventListener('click',()=>chooseTool(button.dataset.tool)));
 document.querySelectorAll('[data-panel-toggle]').forEach(button=>button.addEventListener('click',()=>{
+  if(!ready||busy)return;
+  if(button.id==='shapes'&&!['Rect','Ellipse','Polygon','Line'].includes(activeTool)){
+    chooseTool('Rect');
+    return;
+  }
   const menu=document.getElementById(button.dataset.panelToggle),open=menu.hidden;
   closeMenus();menu.hidden=!open;button.setAttribute('aria-expanded',String(open));refreshZoom();
   syncButtons();
