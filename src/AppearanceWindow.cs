@@ -15,6 +15,7 @@ namespace ScreenLine
         readonly List<TextBlock> selectionMarks = new List<TextBlock>();
         internal readonly List<Button> Options = new List<Button>();
         internal readonly List<Button> ModeOptions = new List<Button>();
+        readonly TextBlock modeStatus = new TextBlock();
 
         public AppearanceWindow(LineTheme selected, Gallery gallery, Action<LineTheme> apply, string mode, Action<string> applyMode)
         {
@@ -51,6 +52,12 @@ namespace ScreenLine
                 System.Windows.Automation.AutomationProperties.SetName(chip, "配色：" + option[1]);
                 ModeOptions.Add(chip); modeRow.Children.Add(chip);
             }
+            modeStatus.FontSize = 12;
+            modeStatus.Foreground = LightTheme.Brush("#65717F");
+            modeStatus.VerticalAlignment = VerticalAlignment.Center;
+            modeStatus.Margin = new Thickness(6, 0, 0, 0);
+            modeRow.Children.Add(modeStatus);
+            RefreshMode(mode);
             body.Children.Add(modeRow);
             body.Children.Add(new TextBlock { Text = "绳子与夹子整套切换", FontSize = 12, Foreground = LightTheme.Brush("#65717F"), Margin = new Thickness(0, 0, 0, 18) });
             var choices = new WrapPanel();
@@ -82,6 +89,19 @@ namespace ScreenLine
         {
             if (applyMode == null) return;
             applyMode(mode);
+        }
+
+        internal void RefreshMode(string mode)
+        {
+            string[] values = { "auto", "light", "dark" };
+            for (int i = 0; i < ModeOptions.Count; i++)
+            {
+                bool selected = values[i] == mode;
+                ModeOptions[i].Tag = selected ? "primary" : null;
+                System.Windows.Automation.AutomationProperties.SetItemStatus(ModeOptions[i], selected ? "已选择" : "");
+            }
+            modeStatus.Text = LightTheme.Dark ? "当前为深色" : "当前为浅色";
+            modeStatus.Visibility = mode == "auto" ? Visibility.Visible : Visibility.Collapsed;
         }
 
         void Select(LineTheme theme)

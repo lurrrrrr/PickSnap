@@ -51,6 +51,8 @@ The same package also runs directly via `app\PickSnap.exe`. Requires Windows 10/
 | Appearance | Five rope themes; light, dark, or system colors |
 | Multiple displays | Fixed display or follow the pointer; capture on any connected display |
 
+System mode shows the current light/dark appearance. Changing the preference without changing the effective color does not restart PickSnap. An actual light/dark change still restarts the app; the system color is read at startup.
+
 Both shortcuts are customizable. On first use, top-edge activation covers the full width with a 450 ms delay, except the top-right window-button area.
 
 ## Understand data retention

@@ -516,6 +516,21 @@ namespace ScreenLine
                     var events = (WindowsEvents)typeof(DesktopController).GetField("events", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(controller);
                     Check(typeof(WindowsEvents).GetField("ClipboardChanged", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(events) == null, "maintenance UI started collecting clipboard content before normal startup");
                     controller.Shelf.Show(); controller.Shelf.Reveal(true, true, 0); controller.ShowSettings();
+                    controller.ShowAppearance();
+                    var appearance = controller.Appearance;
+                    int modeIndex = LightTheme.Dark ? 2 : 1;
+                    appearance.ModeOptions[modeIndex].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    string expectedMode = LightTheme.Dark ? "dark" : "light";
+                    Check(controller.Appearance == appearance && appearance.IsVisible, "same-color selection closed appearance");
+                    Check(new StateStore(root).State.AppTheme == expectedMode, "same-color choice was not saved");
+                    Check(appearance.ModeOptions.Count(b => (string)b.Tag == "primary") == 1 && (string)appearance.ModeOptions[modeIndex].Tag == "primary", "same-color selection highlight is stale");
+                    if (LightTheme.Resolve("auto") == LightTheme.Dark)
+                    {
+                        appearance.ModeOptions[0].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        Check(new StateStore(root).State.AppTheme == "auto" && (string)appearance.ModeOptions[0].Tag == "primary", "returning to system mode did not save or select");
+                        Check(Descendants(appearance).OfType<TextBlock>().Any(t => t.IsVisible && t.Text == (LightTheme.Dark ? "当前为深色" : "当前为浅色")), "system mode status is missing");
+                    }
+                    appearance.Close();
                     foreach (string page in SettingsWindow.Pages) { controller.Settings.SelectPage(page); controller.Settings.UpdateLayout(); Check(controller.Settings.CurrentPage == page, "settings page missing"); Snapshot(controller.Settings, "settings-" + Array.IndexOf(SettingsWindow.Pages, page)); }
                     Check(controller.Settings.Navigation.Items.Count == 4, "settings navigation is not a category list");
                     var buttons = Descendants(controller.Settings).OfType<Button>().ToArray();

@@ -449,8 +449,15 @@ namespace ScreenLine
         async void ChangeTheme(string mode)
         {
             if (Gallery.Store.State.AppTheme == mode) return;
-            foreach (var editor in Editors.ToArray()) if (!await editor.ConfirmClose()) return;
-            try { SetPreference(() => Gallery.Store.State.AppTheme, value => Gallery.Store.State.AppTheme = value, mode); Program.Restart(); }
+            bool requiresRestart = LightTheme.Resolve(mode) != LightTheme.Dark;
+            if (requiresRestart)
+                foreach (var editor in Editors.ToArray()) if (!await editor.ConfirmClose()) return;
+            try
+            {
+                SetPreference(() => Gallery.Store.State.AppTheme, value => Gallery.Store.State.AppTheme = value, mode);
+                if (requiresRestart) Program.Restart();
+                else if (Appearance != null) Appearance.RefreshMode(mode);
+            }
             catch (Exception error) { Gallery.Store.Log(error); Notice("配色保存失败，请重试"); }
         }
 
