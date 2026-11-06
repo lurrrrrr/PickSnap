@@ -585,6 +585,9 @@ namespace ScreenLine
                 try {
                     var cards = (Dictionary<string, ShotCard>)typeof(ShelfWindow).GetField("cards", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(shelf);
                     var originalCard = cards[before.Path]; double position = originalCard.MountX;
+                    shelf.ExtendLeft(96);
+                    Check(Math.Abs(originalCard.MountX - position - 96) < .01, "left extension did not shift the content origin");
+                    position = originalCard.MountX;
                     var replacement = g.ReplaceImage(before, after.Path, after.Image);
                     Check(g.Store.State.CardOffsets[replacement.Path] == 167, "metadata was lost when the path changed");
                     Check(cards[replacement.Path] == originalCard && originalCard.MountX == position && originalCard.Item == replacement, "replacement rebuilt or moved the clip");
@@ -594,6 +597,12 @@ namespace ScreenLine
                         Check(cards[next.Path].MountX > last, "new capture wrapped to the left");
                         Check(originalCard.MountX == position, "append moved an existing clip");
                     }
+                    foreach (var item in g.Items.Where(item => item != replacement).ToArray()) g.Forget(item);
+                    var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                    double limit = (double)typeof(ShelfWindow).GetProperty("ScrollLimit", flags).GetValue(shelf, null);
+                    Check(Math.Abs(limit - originalCard.MountX) < .01, "deleted cards left an empty scroll range");
+                    for (int i = 0; i < 10; i++) shelf.Update();
+                    Check(Math.Abs((double)typeof(ShelfWindow).GetProperty("ScrollLimit", flags).GetValue(shelf, null) - limit) < .01, "layout expanded scroll range repeatedly");
                 } finally { shelf.Close(); }
             });
         }

@@ -156,7 +156,8 @@ namespace ScreenLine
         const double RopeInset = 12;
         double PhotoWidth { get { return Math.Max(1, (ActualWidth > 0 ? ActualWidth : Width) - 2 * RopeInset - AccessoryWidth); } }
         double LineWidth { get { return Math.Max(1, (ActualWidth > 0 ? ActualWidth : Width) - 2 * RopeInset); } }
-        double ScrollLimit { get { return Math.Max(0, content.Width - PhotoWidth); } }
+        double ScrollLimit { get { if (dragCard != null) return Math.Max(0, content.Width - PhotoWidth); return cards.Count == 0 ? 0 : Math.Max(0, cards.Values.Max(card => card.MountX)); } }
+        double ScrollMinimum { get { if (dragCard != null) return 0; return cards.Count == 0 ? 0 : Math.Max(0, cards.Values.Min(card => card.MountX) + CardWidth - PhotoWidth); } }
         internal Point TextAnchor
         {
             get
@@ -573,7 +574,7 @@ namespace ScreenLine
             if (gallery.Items.Count > 0 && !double.IsNaN(content.Width)) contentWidth = Math.Max(contentWidth, content.Width);
             content.Width = contentWidth;
             content.Height = 220;
-            scrollMotion.Target = Math.Max(0, Math.Min(ScrollLimit, scrollMotion.Target));
+            scrollMotion.Target = Math.Max(ScrollMinimum, Math.Min(ScrollLimit, scrollMotion.Target));
             if (ScrollLimit == 0) { scrollMotion.Snap(0); viewport.ScrollToHorizontalOffset(0); lastScrollOffset = 0; }
             else if (scrollMotion.Position > ScrollLimit) { scrollMotion.Position = ScrollLimit; scrollMotion.Velocity = 0; }
             // 绳子下垂度只在首次排位时确定：之后新挂图片不再改变绳形，避免原有夹子被顶得上下移动。
@@ -627,7 +628,8 @@ namespace ScreenLine
                 card.Place(x, !Revealed);
                 card.Frame(0, ropeMotion.Position, LineWidth, viewport.HorizontalOffset, viewport.ActualWidth);
             }
-            if (placed.Count > 0) content.Width = Math.Max(content.Width, placed.Max() + available);
+            if (blocked.Count > 0) content.Width = Math.Max(available, Math.Max(blocked.Max(), viewport.HorizontalOffset) + available);
+            scrollMotion.Target = Math.Max(ScrollMinimum, Math.Min(ScrollLimit, scrollMotion.Target));
             UpdateScrollHint();
         }
 
@@ -639,7 +641,7 @@ namespace ScreenLine
             scrollRight.Margin = new Thickness(0, 26, RopeInset + AccessoryWidth, 0);
             bool overflow = limit > 2;
             scrollRight.Visibility = overflow && viewport.HorizontalOffset < limit - 2 ? Visibility.Visible : Visibility.Collapsed;
-            scrollLeft.Visibility = overflow && viewport.HorizontalOffset > 2 ? Visibility.Visible : Visibility.Collapsed;
+            scrollLeft.Visibility = overflow && viewport.HorizontalOffset > ScrollMinimum + 2 ? Visibility.Visible : Visibility.Collapsed;
         }
 
         // 箭头明暗三档：默认 0.25 几乎隐身；指针在绳带区域内 0.6；悬停箭头本体 0.9 并轻微放大。
@@ -721,7 +723,7 @@ namespace ScreenLine
         }
 
         // 把夹子放到光标位置：允许两端各越出视口 72px（约半个夹子留在屏外），但左侧不出内容起点
-        // （否则滚回起点时必然切一半）。想挪更远的绳段由 UpdateDragEdgeScroll 自动滚动/加长绳子。
+        // 左端到达零点时平移内容原点，继续为拖动腾出空间。
         void ApplyDragPosition()
         {
             if (dragCard == null) return;
@@ -751,6 +753,24 @@ namespace ScreenLine
             if (relative < 44) dragScrollDirection = -1;
             else if (relative > width - 44) dragScrollDirection = 1;
             else dragScrollDirection = 0;
+        }
+
+        // WPF scroll offsets cannot be negative. Add space on the left by moving
+        // the content origin and viewport together, preserving every visible position.
+        internal void ExtendLeft(double amount)
+        {
+            if (amount <= 0 || cards.Count == 0) return;
+            content.Width += amount;
+            foreach (var card in cards.Values) {
+                card.Place(card.MountX + amount, true);
+                manualOffsets[card.Item.Path] = card.MountX;
+            }
+            dipCenter += amount;
+            scrollMotion.Position += amount; scrollMotion.Target += amount;
+            lastScrollOffset += amount;
+            viewport.UpdateLayout();
+            viewport.ScrollToHorizontalOffset(scrollMotion.Position);
+            dragMoved = true;
         }
 
         void EndCardDrag(ShotCard card)
@@ -946,7 +966,7 @@ namespace ScreenLine
                     scrollMotion.Target = Math.Max(0, Math.Min(ScrollLimit, target.MountX + CardWidth + 12 - viewport.ViewportWidth));
             }
             // 卡片还没建出来时不要把视野甩到最右端（挂图后"突然跳到最右边"的来源之一），保持当前视野即可。
-            else scrollMotion.Target = Math.Max(0, Math.Min(ScrollLimit, scrollMotion.Target));
+            else scrollMotion.Target = Math.Max(ScrollMinimum, Math.Min(ScrollLimit, scrollMotion.Target));
             // 回弹比原来的 8 轻一些，避免新图挂上去时整排夹子跟着大幅晃动。
             ropeMotion.Velocity += 6;
             if (!Revealed || !origin.HasValue || flights.Count(f => !f.Falling && !f.Collecting) >= 2) return;
@@ -1185,15 +1205,18 @@ namespace ScreenLine
                 UpdateDragEdgeScroll();
                 if (dragScrollDirection != 0)
                 {
+                    double travel = DragScrollSpeed * elapsed;
+                    if (dragScrollDirection < 0 && scrollMotion.Target < travel + 16) ExtendLeft(Math.Max(96, travel * 2));
+                    if (dragScrollDirection > 0 && scrollMotion.Target + travel > ScrollLimit - 16) content.Width += Math.Max(96, travel * 2);
                     double limit = ScrollLimit;
-                    double target = scrollMotion.Target + dragScrollDirection * DragScrollSpeed * elapsed;
+                    double target = scrollMotion.Target + dragScrollDirection * travel;
                     scrollMotion.Target = Math.Max(0, Math.Min(limit, target));
                     if (dragScrollDirection < 0 && scrollMotion.Target <= 0) dragScrollDirection = 0;
                     if (dragScrollDirection > 0 && scrollMotion.Target >= limit) dragScrollDirection = 0;
                     ApplyDragPosition();
                 }
             }
-            scrollMotion.Target = Math.Max(0, Math.Min(scrollMotion.Target, ScrollLimit));
+            scrollMotion.Target = Math.Max(ScrollMinimum, Math.Min(scrollMotion.Target, ScrollLimit));
             scrollMotion.Step(elapsed);
             if (scrollMotion.Position < 0 || scrollMotion.Position > ScrollLimit)
             {
@@ -1247,7 +1270,7 @@ namespace ScreenLine
             double best = target, bestDistance = double.MaxValue;
             foreach (var candidate in candidates)
             {
-                double o = Math.Max(0, Math.Min(limit, candidate));
+                double o = Math.Max(ScrollMinimum, Math.Min(limit, candidate));
                 double distance = Math.Abs(o - target);
                 if (distance > SnapReach || distance >= bestDistance || !EdgeClean(o)) continue;
                 bestDistance = distance; best = o;
@@ -1275,7 +1298,7 @@ namespace ScreenLine
             Preview.Dismiss();
             trackingScrollHover = true; scrollHover.Stop(); scrollHover.Start();
             suppressSnap = false;
-            double target = Math.Max(0, Math.Min(ScrollLimit, scrollMotion.Target - delta));
+            double target = Math.Max(ScrollMinimum, Math.Min(ScrollLimit, scrollMotion.Target - delta));
             if (Math.Abs(target - scrollMotion.Target) > 0.01)
             {
                 scrollMotion.Target = target;
@@ -1286,8 +1309,8 @@ namespace ScreenLine
 
         // 低级鼠标钩子：透明分层窗口的空白像素（alpha=0）在系统命中测试里直接穿透到下层窗口，
         // 落在绳子横带空白处的滚轮 WPF 根本收不到。这里在带内接管滚轮并驱动横向滚动：
-        // 指针下面若已是本应用的窗口（卡片、篮子、预览等）则放行交给它们；
-        // 否则消费滚轮事件（防止滚到绳子后面的窗口），带外与其他事件一律原样放行。
+        // 绳子本身和透明空白统一由钩子处理，消费后不再走 WPF，避免重复滚动。
+        // 其他应用内窗口（贴图、菜单等）保留自己的滚轮行为。
         IntPtr WatchMouse(int code, IntPtr word, IntPtr info)
         {
             if (code >= 0 && word.ToInt32() == WindowsNative.MouseWheelMessage && Revealed && !Capturing && ScrollLimit > 2)
@@ -1296,10 +1319,15 @@ namespace ScreenLine
                 WindowsNative.Rectangle bounds;
                 WindowsNative.GetWindowRect(Handle, out bounds);
                 bool inside = data.Point.X >= bounds.Left && data.Point.X < bounds.Right && data.Point.Y >= bounds.Top && data.Point.Y < bounds.Bottom;
+                if (inside) {
+                    Point local = PointFromScreen(new Point(data.Point.X, data.Point.Y));
+                    Rect photoArea = viewport.TransformToAncestor(this).TransformBounds(new Rect(viewport.RenderSize));
+                    inside = photoArea.Contains(local);
+                }
                 if (inside)
                 {
                     IntPtr under = WindowsNative.WindowAt(data.Point);
-                    if (under == IntPtr.Zero || (under != Handle && WindowsNative.WindowProcess(under) != processId))
+                    if (under == IntPtr.Zero || under == Handle || WindowsNative.WindowProcess(under) != processId)
                     {
                         double delta = (short)((data.MouseData >> 16) & 0xFFFF);
                         Dispatcher.BeginInvoke(new Action(delegate { ScrollByWheel(delta); }));
