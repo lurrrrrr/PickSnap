@@ -1530,7 +1530,7 @@ namespace ScreenLine
             close.Focusable = false;
             close.Opacity = 0;
             close.ToolTip = FileRules.IsInside(item.Path, gallery.Store.Inbox) ? "删除图片（移到回收站）" : "移除记录（保留原文件）";
-            close.Click += delegate { act(ShotAction.Trash, item); };
+            close.Click += delegate { act(ShotAction.Trash, Item); };
             imageLayer.Children.Add(close);
             Surface.Child = imageLayer;
             Children.Add(Surface);
@@ -1601,6 +1601,7 @@ namespace ScreenLine
 
         public bool UpdateImage()
         {
+            close.ToolTip = FileRules.IsInside(Item.Path, gallery.Store.Inbox) ? "删除图片（移到回收站）" : "移除记录（保留原文件）";
             if (displayed == Item.Image) return false;
             bool updating = displayed != null;
             displayed = Item.Image;

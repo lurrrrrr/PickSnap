@@ -606,6 +606,12 @@ namespace ScreenLine
                     var replacement = g.ReplaceImage(before, after.Path, after.Image);
                     Check(g.Store.State.CardOffsets[replacement.Path] == 167, "metadata was lost when the path changed");
                     Check(cards[replacement.Path] == originalCard && originalCard.MountX == position && originalCard.Item == replacement, "replacement rebuilt or moved the clip");
+                    CaptureItem deleted = null;
+                    var testCard = new ShotCard(before, (action, item) => { if (action == ShotAction.Trash) deleted = item; }, g, () => new CaptureItem[0]);
+                    testCard.Item = replacement;
+                    var closeButton = (Button)typeof(ShotCard).GetField("close", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(testCard);
+                    closeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Check(deleted == replacement, "close button targeted the stale image after replacement");
                     for (int i = 0; i < 12; i++) {
                         double last = cards.Values.Max(card => card.MountX);
                         var next = Image(g, "append-" + i, true);

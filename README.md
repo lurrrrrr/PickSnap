@@ -65,7 +65,7 @@
 
 ## 快速开始
 
-1. 从 [Releases](https://github.com/lurrrrrr/PickSnap/releases/latest) 下载 `PickSnap-2.1.0-windows-x64.zip`，**先完整解压**。
+1. 从 [Releases](https://github.com/lurrrrrr/PickSnap/releases/latest) 下载 `PickSnap-2.1.1-windows-x64.zip`，**先完整解压**。
 2. 双击 `Install.cmd`。程序安装到 `%LOCALAPPDATA%\Programs\PickSnap`，创建桌面快捷方式并启动，不需要管理员权限。
 3. 截一张图，再把鼠标移到屏幕顶边；单击图片即可复制使用。
 

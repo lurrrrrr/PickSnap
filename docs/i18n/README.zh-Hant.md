@@ -34,7 +34,7 @@
 
 ## 快速開始
 
-1. 下載並完整解壓縮 `PickSnap-2.1.0-windows-x64.zip`。
+1. 下載並完整解壓縮 `PickSnap-2.1.1-windows-x64.zip`。
 2. 執行 `Install.cmd`，安裝到 `%LOCALAPPDATA%\Programs\PickSnap`，不需管理員權限。
 3. 截圖後將滑鼠移到螢幕頂邊，展開繩子並單擊圖片複製。
 

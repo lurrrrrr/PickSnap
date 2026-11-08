@@ -105,6 +105,17 @@ namespace ScreenLine
         internal Image Preview { get { return preview; } }
         internal int VisibleCount { get { return choices.Count; } }
         internal Button ChoiceFor(string path) { return choices[path]; }
+        bool visitingFolder;
+        Window basketOwner;
+
+        void RestoreAfterFolder()
+        {
+            if (!visitingFolder) return;
+            visitingFolder = false;
+            if (basketOwner != null && basketOwner.IsVisible) Owner = basketOwner;
+            basketOwner = null;
+            Topmost = true;
+        }
 
         public BasketWindow(Gallery gallery, Action<CaptureItem> hang, Action<ShotAction, CaptureItem> act, Func<string, bool> isPinned = null, Func<int> ropeRoom = null, Func<int> ropeCapacity = null, Action<bool> setAutoPurge = null)
         {
@@ -165,6 +176,26 @@ namespace ScreenLine
             title.Children.Add(new TextBlock { Text = "图片篮子", FontSize = 18, FontWeight = FontWeights.SemiBold, Foreground = LightTheme.Brush("#283343"), VerticalAlignment = VerticalAlignment.Center });
             heading.Children.Add(title);
             var tools = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+            var openFolder = LightTheme.Button("", delegate
+            {
+                // 暂时退出绳子的置顶窗口组，让资源管理器位于篮子前方。
+                visitingFolder = true;
+                basketOwner = Owner;
+                Owner = null;
+                Topmost = false;
+                try { WindowsShell.OpenInbox(gallery.Store); }
+                catch (Exception error)
+                {
+                    gallery.Store.Log(error);
+                    RestoreAfterFolder(); Activate();
+                    MessageBox.Show(this, "无法打开图片文件夹，请重试。", "PickSnap");
+                }
+            }, "quiet");
+            openFolder.Content = LightTheme.Icon("folder", 17);
+            openFolder.Width = openFolder.Height = 28; openFolder.MinWidth = 0; openFolder.Padding = new Thickness(0);
+            openFolder.Margin = new Thickness(0, 0, 12, 0); openFolder.ToolTip = "打开图片保存文件夹";
+            AutomationProperties.SetName(openFolder, "打开图片保存文件夹");
+            tools.Children.Add(openFolder);
             tools.Children.Add(new TextBlock { Text = "自动清理 7 天前的旧图", FontSize = 12, Foreground = LightTheme.Brush("#65717F"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 8, 0) });
             AutoPurgeSwitch = new SwitchBox { Style = LightTheme.SwitchStyle, IsChecked = gallery.Store.State.AutoPurge, VerticalAlignment = VerticalAlignment.Center };
             AutomationProperties.SetName(AutoPurgeSwitch, "自动清理 7 天前的旧图");
@@ -444,6 +475,7 @@ namespace ScreenLine
                 catch (InvalidOperationException) { }
             };
             MouseLeftButtonUp += delegate { dragFrom = null; };
+            Activated += delegate { if (visitingFolder) RestoreAfterFolder(); };
             // 点面板以外的地方（别的程序、桌面）就收起，不用非去找右上角的 ×。
             Deactivated += delegate
             {
@@ -451,7 +483,7 @@ namespace ScreenLine
                 settle.Tick += delegate
                 {
                     settle.Stop();
-                    if (closed || IsActive || !IsVisible) return;
+                    if (closed || IsActive || !IsVisible || visitingFolder) return;
                     // 左键还按着：多半是从绳子往面板里拖图，拖放期间窗口会短暂失活，不能关。
                     if ((WindowsNative.GetAsyncKeyState(0x01) & 0x8000) != 0) return;
                     Point origin = PointToScreen(new Point(0, 0));
@@ -472,6 +504,7 @@ namespace ScreenLine
         // 否则又会被压在绳子下面：看得见、点不动。
         internal void BringToFront()
         {
+            if (visitingFolder) return;
             var handle = new WindowInteropHelper(this).Handle;
             if (handle != IntPtr.Zero)
                 WindowsNative.SetWindowPos(handle, new IntPtr(-1), 0, 0, 0, 0, 0x13);

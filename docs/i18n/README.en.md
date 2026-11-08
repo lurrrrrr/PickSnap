@@ -36,7 +36,7 @@ Demos use sample content and actual application views. Their captions are in Chi
 
 ## Get started
 
-1. Download and fully extract `PickSnap-2.1.0-windows-x64.zip` from Releases.
+1. Download and fully extract `PickSnap-2.1.1-windows-x64.zip` from Releases.
 2. Run `Install.cmd`. It installs under `%LOCALAPPDATA%\Programs\PickSnap` and creates a desktop shortcut; no administrator access is needed.
 3. Take a screenshot, move the pointer to the top edge, and click an image to copy it.
 
