@@ -54,6 +54,7 @@ namespace ScreenLine
             if (args.Contains("--demos")) { DemoRecorder.Run(); app.Shutdown(); return 0; }
             if (args.Contains("--ui-only"))
             {
+                Run("Rope hint and capture toolbar theme", CaptureThemeLayout);
                 Run("Settings button alignment", SettingsPages);
                 Run("Menu dismissal timing", MenuDismissalTiming);
                 Run("Tray and basket layout", MenuAndBasketLayout);
@@ -647,6 +648,40 @@ namespace ScreenLine
             var clock = Stopwatch.StartNew();
             while (!task.IsCompleted && clock.ElapsedMilliseconds < 10000) { Dispatcher.CurrentDispatcher.Invoke(new Action(() => { }), DispatcherPriority.Background); Thread.Sleep(5); }
             Check(task.IsCompleted, "async fixture did not finish"); task.GetAwaiter().GetResult();
+        }
+        static void CaptureThemeLayout()
+        {
+            Temporary(root => {
+                var gallery = new Gallery(new StateStore(root));
+                var shelf = new ShelfWindow(gallery, delegate { }, delegate { });
+                shelf.Show(); shelf.Reveal(true, true, 0); shelf.Update(); Pump(250);
+                var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                var hint = (Border)typeof(ShelfWindow).GetField("hint", flags).GetValue(shelf);
+                hint.UpdateLayout();
+                Check(((SolidColorBrush)hint.Background).Color == ((SolidColorBrush)LightTheme.Brush("#FFFFFF")).Color, "empty hint ignores theme");
+                var picture = BitmapSource.Create(800, 600, 96, 96, PixelFormats.Bgra32, null, new byte[800 * 600 * 4], 800 * 4);
+                var capture = new CaptureWindow(System.Windows.Forms.Screen.PrimaryScreen, picture);
+                try {
+                    capture.Show(); capture.Select(new Rect(10, 10, 600, 400)); capture.UpdateLayout();
+                    var toolbar = (Border)typeof(CaptureWindow).GetField("toolbar", flags).GetValue(capture);
+                    Check(((SolidColorBrush)toolbar.Background).Color == ((SolidColorBrush)LightTheme.Brush("#FFFFFF")).Color, "toolbar ignores theme");
+                    foreach (var button in capture.Tools.Values)
+                    {
+                        var icon = button.Content as Viewbox;
+                        Check(icon != null && icon.Child is Canvas && icon.HorizontalAlignment == HorizontalAlignment.Center && icon.VerticalAlignment == VerticalAlignment.Center, "capture icon lacks centered canvas");
+                    }
+                    if (render)
+                    {
+                        ((Panel)toolbar.Parent).Children.Remove(toolbar);
+                        var host = new Window { Content = toolbar, SizeToContent = SizeToContent.WidthAndHeight, ShowInTaskbar = false };
+                        host.Show(); host.UpdateLayout(); Snapshot(toolbar, "capture-toolbar"); host.Content = null; host.Close();
+                        shelf.Close();
+                        ((Panel)hint.Parent).Children.Remove(hint);
+                        host = new Window { Content = hint, SizeToContent = SizeToContent.WidthAndHeight, ShowInTaskbar = false };
+                        host.Show(); host.UpdateLayout(); Snapshot(hint, "rope-empty-hint"); host.Content = null; host.Close();
+                    }
+                } finally { capture.Close(); shelf.Close(); }
+            });
         }
         static void Snapshot(FrameworkElement element, string name)
         {

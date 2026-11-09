@@ -274,6 +274,7 @@ window.startEditor=async function(options){
   await new Promise((resolve,reject)=>{source.onload=resolve;source.onerror=reject;source.src=options.source;});
   const {TABS,TOOLS}=FilerobotImageEditor;
   editor=new FilerobotImageEditor(document.getElementById('editor'),{
+    // Vendor export caches the original image at its source-to-preview scale; output stays at original pixel size.
     source,useBackendTranslations:false,useCloudimage:false,savingPixelRatio:1,previewPixelRatio:window.devicePixelRatio,
     removeSaveButton:true,observePluginContainerSize:true,avoidChangesNotSavedAlertOnLeave:true,
     useZoomPresetsMenu:false,

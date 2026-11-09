@@ -342,9 +342,9 @@ namespace ScreenLine
             help.Children.Add(enable);
             hint.Child = help;
             hint.Width = 380;
-            hint.Background = new SolidColorBrush(Color.FromArgb(248, 255, 255, 255));
+            hint.Background = LightTheme.Brush("#FFFFFF");
             hint.CornerRadius = new CornerRadius(16);
-            hint.BorderBrush = new SolidColorBrush(Color.FromRgb(218, 224, 232));
+            hint.BorderBrush = LightTheme.Brush("#DCE2EA");
             hint.BorderThickness = new Thickness(1);
             hint.Effect = new DropShadowEffect { BlurRadius = 16, ShadowDepth = 3, Opacity = 0.18 };
             content.Children.Add(hint);

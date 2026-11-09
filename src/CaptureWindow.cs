@@ -206,7 +206,7 @@ namespace ScreenLine
             actions.Children.Add(AddButton("另存", SaveAs)); actions.Children.Add(AddButton("取消", Close));
             var done = AddButton("完成", Finish); done.Tag = "primary"; actions.Children.Add(done);
             rows.Children.Add(actions);
-            toolbar = new Border { Child = rows, Background = Brushes.White, CornerRadius = new CornerRadius(9), Padding = new Thickness(5), Visibility = Visibility.Collapsed,
+            toolbar = new Border { Child = rows, Background = LightTheme.Brush("#FFFFFF"), CornerRadius = new CornerRadius(9), Padding = new Thickness(5), Visibility = Visibility.Collapsed,
                 BorderBrush = LightTheme.Brush("#DCE2EA"), BorderThickness = new Thickness(1),
                 Effect = new DropShadowEffect { Color = Color.FromRgb(25, 36, 50), BlurRadius = 16, ShadowDepth = 3, Opacity = 0.22 } };
             controls.Children.Add(toolbar);
@@ -245,11 +245,15 @@ namespace ScreenLine
             var path = new System.Windows.Shapes.Path { Data = Geometry.Parse(icons[name]), StrokeThickness = 1.7, StrokeStartLineCap = PenLineCap.Round,
                 StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round };
             path.SetBinding(Shape.StrokeProperty, new Binding("Foreground") { Source = button });
-            button.Content = new Viewbox { Width = 17, Height = 17, Child = path };
+            var iconCanvas = new Canvas { Width = 24, Height = 24, IsHitTestVisible = false };
+            iconCanvas.Children.Add(path);
+            button.HorizontalContentAlignment = HorizontalAlignment.Center;
+            button.VerticalContentAlignment = VerticalAlignment.Center;
+            button.Content = new Viewbox { Width = 17, Height = 17, Child = iconCanvas, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             AutomationProperties.SetName(button, name); Tools.Add(name, button); return button;
         }
 
-        static Border Divider() { return new Border { Width = 1, Height = 20, Background = LightTheme.Brush("#E4E9EF"), Margin = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center }; }
+        static Border Divider() { return new Border { Width = 1, Height = 20, Background = LightTheme.Brush("#DCE2EA"), Margin = new Thickness(6, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center }; }
 
         internal Task<BitmapSource> PickAsync() { Show(); return completion.Task; }
 
