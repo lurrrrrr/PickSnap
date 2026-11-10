@@ -572,6 +572,7 @@ namespace ScreenLine
                         Shelf.ShowCopied(item.Path);
                         break;
                     case ShotAction.Open:
+                        Captures.ExpectOpenedImage(item);
                         Process.Start(new ProcessStartInfo(item.Path) { UseShellExecute = true });
                         Shelf.FollowImageViewer(item.Path);
                         break;

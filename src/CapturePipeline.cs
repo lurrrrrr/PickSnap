@@ -37,6 +37,8 @@ namespace ScreenLine
         const double ClipboardEditTolerance = 0.35;
         const int ClipboardSettle = 600;
         CaptureItem clipboardPending;
+        CaptureItem openingImage;
+        DateTime openingImageUntil = DateTime.MinValue;
         uint observedCaptureSequence;
         string observedCaptureSource;
         // 最近一次真正落盘的剪贴板图片。截图工具退出时还会再写一次剪贴板，而那时它进程已销毁，
@@ -85,6 +87,18 @@ namespace ScreenLine
         {
             clipboardSequence = WindowsNative.GetClipboardSequenceNumber();
             clipboardDue = DateTime.MaxValue;
+        }
+
+        internal void ExpectOpenedImage(CaptureItem item)
+        {
+            openingImage = item;
+            openingImageUntil = DateTime.UtcNow.AddSeconds(8);
+        }
+
+        internal static bool IsOpenedImageEcho(ImageContent opened, ImageContent received, DateTime now, DateTime expires)
+        {
+            return now <= expires && opened != null && received != null && opened.Fingerprint != null
+                && opened.Fingerprint == received.Fingerprint;
         }
 
         public async Task Start()
@@ -284,6 +298,21 @@ namespace ScreenLine
                 string owner = picture.Source ?? string.Empty;
                 ImageContent content = await Task.Run(() => ImageContent.Decode(picture.Bytes));
                 if (disposed || !CollectClipboard || WindowsNative.GetClipboardSequenceNumber() != sequence) return;
+                var opened = openingImage;
+                if (opened != null && DateTime.UtcNow <= openingImageUntil && gallery.Collected.Contains(opened) && File.Exists(opened.Path))
+                {
+                    ImageContent openedContent = opened.Image;
+                    if (openedContent.Fingerprint == null) openedContent = await Task.Run(() => ImageContent.Read(opened.Path));
+                    if (disposed || !CollectClipboard || WindowsNative.GetClipboardSequenceNumber() != sequence) return;
+                    if (IsOpenedImageEcho(openedContent, content, DateTime.UtcNow, openingImageUntil))
+                    {
+                        clipboardPending = opened;
+                        clipboardLastFingerprint = content.Fingerprint;
+                        clipboardLastCommitAt = DateTime.UtcNow;
+                        openingImage = null;
+                        return;
+                    }
+                }
                 if (!receipts.Accept(content.Fingerprint, CaptureSource.Clipboard, DateTime.UtcNow, ClipboardRepeat))
                 {
                     if (IsCaptureTool(owner)) LinkClipboardCandidate(content.Fingerprint);

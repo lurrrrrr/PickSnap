@@ -51,6 +51,7 @@ namespace ScreenLine
                 app.Shutdown(); Console.WriteLine(count + " clipboard checks: " + (count - failures) + " passed, " + failures + " failed."); return failures == 0 ? 0 : 1;
             }
             Run("Unsupported encoded medium falls back to bitmap", ClipboardMediumFallback);
+            Run("Opening an image only suppresses the matching immediate clipboard echo", OpenImageEcho);
             if (args.Contains("--demos")) { DemoRecorder.Run(); app.Shutdown(); return 0; }
             if (args.Contains("--ui-only"))
             {
@@ -648,6 +649,17 @@ namespace ScreenLine
             var clock = Stopwatch.StartNew();
             while (!task.IsCompleted && clock.ElapsedMilliseconds < 10000) { Dispatcher.CurrentDispatcher.Invoke(new Action(() => { }), DispatcherPriority.Background); Thread.Sleep(5); }
             Check(task.IsCompleted, "async fixture did not finish"); task.GetAwaiter().GetResult();
+        }
+        static void OpenImageEcho()
+        {
+            var opened = ImageContent.Decode(Png());
+            var same = ImageContent.Decode(Png());
+            var differentBytes = ImageContent.EncodeClipboard(BitmapSource.Create(2, 2, 96, 96, PixelFormats.Bgra32, null, new byte[16], 8));
+            var different = ImageContent.Decode(differentBytes);
+            var now = DateTime.UtcNow;
+            Check(CapturePipeline.IsOpenedImageEcho(opened, same, now, now.AddSeconds(1)), "matching image was collected again");
+            Check(!CapturePipeline.IsOpenedImageEcho(opened, different, now, now.AddSeconds(1)), "different clipboard image was suppressed");
+            Check(!CapturePipeline.IsOpenedImageEcho(opened, same, now, now.AddSeconds(-1)), "opening suppression never expired");
         }
         static void CaptureThemeLayout()
         {

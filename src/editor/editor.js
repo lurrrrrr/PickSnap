@@ -265,7 +265,12 @@ async function finishTool(apply){
   syncButtons();send({action:'dirty',value:currentKey!==baseline});
 }
 function refreshZoom(){
-  document.getElementById('zoom').textContent=(document.querySelector('.FIE_topbar-zoom-label')?.textContent||'')+' · 适应窗口';
+  const nativeLabel=document.querySelector('.FIE_topbar-zoom-label');
+  document.getElementById('zoom').textContent=nativeLabel?.textContent||'适应';
+  document.querySelectorAll('.zoom-controls [data-native]').forEach(button=>{
+    const native=document.querySelector(button.dataset.native);
+    button.disabled=busy||!ready||!native||native.disabled||native.getAttribute('aria-disabled')==='true';
+  });
 }
 
 window.startEditor=async function(options){
@@ -302,6 +307,9 @@ window.startEditor=async function(options){
   baseline=stateKey(current.designState);
   canvasStage=(await readState()).designLayer.getStage();
   ready=true;chooseTool('Rect');showStatus('');
+  const zoomBar=document.querySelector('.FIE_topbar');
+  if(zoomBar)new MutationObserver(refreshZoom).observe(zoomBar,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['disabled','aria-disabled']});
+  refreshZoom();
   send({action:'ready'});
 };
 

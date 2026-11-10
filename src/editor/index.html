@@ -70,6 +70,11 @@
     </div>
   </div>
   <div class="actions">
+    <div class="zoom-controls" role="group" aria-label="画布缩放">
+      <button data-native=".FIE_topbar-zoom-out-btn" title="缩小" aria-label="缩小">−</button>
+      <button id="zoom" data-native=".FIE_topbar-zoom-label" title="点击适应窗口" aria-label="当前缩放，点击适应窗口">适应</button>
+      <button data-native=".FIE_topbar-zoom-in-btn" title="放大" aria-label="放大">+</button>
+    </div>
     <div class="menu-anchor">
       <button id="more" class="icon-button" data-panel-toggle="moreMenu" disabled title="更多" aria-label="更多" aria-haspopup="menu" aria-expanded="false"><svg><use href="#i-more"/></svg></button>
       <div id="moreMenu" class="popup more-menu" role="menu" aria-label="更多操作" hidden>
@@ -86,12 +91,6 @@
         <button data-native=".FIE_flip-y-tool-button" data-flip role="menuitem">垂直翻转</button>
         <button id="compare" role="menuitem" title="按住查看原图">按住查看原图</button>
         <button data-native=".FIE_topbar-reset-button" role="menuitem">恢复原图…</button>
-        <hr>
-        <div class="zoom-controls" role="group" aria-label="画布缩放">
-          <button data-native=".FIE_topbar-zoom-out-btn" data-keep-menu title="缩小" aria-label="缩小">−</button>
-          <button id="zoom" data-native=".FIE_topbar-zoom-label" data-keep-menu title="适应窗口">适应窗口</button>
-          <button data-native=".FIE_topbar-zoom-in-btn" data-keep-menu title="放大" aria-label="放大">+</button>
-        </div>
       </div>
     </div>
     <button id="save" class="primary" data-action="finish" disabled title="保存并关闭">完成</button>
